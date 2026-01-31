@@ -1,0 +1,42 @@
+{
+    "message": {
+        "role": "assistant",
+        "content": "Based on the documentation, Pinecone is a vector database designed for machine learning applications. It allows you to store, index, and query high-dimensional vector embeddings at scale.\n\nKey features include:\n1. Serverless and pod-based deployment options\n2. Real-time vector similarity search\n3. Metadata filtering\n4. Namespace isolation"
+    },
+    "citations": [
+        {
+            "position": 0,
+            "references": [
+                {
+                    "file": {
+                        "name": "getting-started.pdf",
+                        "id": "file-abc123"
+                    },
+                    "pages": [1, 2, 3]
+                }
+            ]
+        },
+        {
+            "position": 1,
+            "references": [
+                {
+                    "file": {
+                        "name": "architecture-guide.pdf",
+                        "id": "file-def456"
+                    },
+                    "pages": [5, 6]
+                },
+                {
+                    "file": {
+                        "name": "best-practices.md",
+                        "id": "file-ghi789"
+                    }
+                }
+            ]
+        }
+    ],
+    "usage": {
+        "prompt_tokens": 150,
+        "completion_tokens": 200
+    }
+}

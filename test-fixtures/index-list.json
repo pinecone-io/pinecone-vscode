@@ -1,0 +1,65 @@
+{
+    "indexes": [
+        {
+            "name": "production-index",
+            "dimension": 1536,
+            "metric": "cosine",
+            "host": "production-index-abc123.svc.us-east-1.pinecone.io",
+            "status": {
+                "ready": true,
+                "state": "Ready"
+            },
+            "spec": {
+                "serverless": {
+                    "cloud": "aws",
+                    "region": "us-east-1"
+                }
+            },
+            "deletion_protection": "enabled",
+            "tags": {
+                "env": "production",
+                "team": "ml"
+            }
+        },
+        {
+            "name": "staging-index",
+            "dimension": 768,
+            "metric": "euclidean",
+            "host": "staging-index-def456.svc.us-west-2.pinecone.io",
+            "status": {
+                "ready": true,
+                "state": "Ready"
+            },
+            "spec": {
+                "serverless": {
+                    "cloud": "aws",
+                    "region": "us-west-2"
+                }
+            },
+            "deletion_protection": "disabled",
+            "tags": {
+                "env": "staging"
+            }
+        },
+        {
+            "name": "pod-index",
+            "dimension": 256,
+            "metric": "dotproduct",
+            "host": "pod-index-ghi789.svc.us-west1-gcp.pinecone.io",
+            "status": {
+                "ready": true,
+                "state": "Ready"
+            },
+            "spec": {
+                "pod": {
+                    "environment": "us-west1-gcp",
+                    "pod_type": "p1.x1",
+                    "pods": 2,
+                    "replicas": 1,
+                    "shards": 2
+                }
+            },
+            "deletion_protection": "disabled"
+        }
+    ]
+}

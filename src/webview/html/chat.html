@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Chat with Assistant</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Chat: <span id="assistant-name">${assistantName}</span></h2>
+            <div class="controls">
+                 <button id="clear-btn" class="secondary-btn">Clear Chat</button>
+            </div>
+        </div>
+
+        <div class="chat-container">
+            <div id="messages" class="messages"></div>
+            <div id="typing-indicator" class="typing-indicator hidden">Assistant is typing...</div>
+        </div>
+
+        <div class="settings-panel">
+            <details>
+                <summary>Settings</summary>
+                <div class="settings-content">
+                    <div class="form-group">
+                        <label for="model-select">Model</label>
+                        <select id="model-select">
+                            <!-- Models populated dynamically from extension -->
+                            <option value="">Loading models...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="temp-range">Temperature: <span id="temp-val">0.0</span></label>
+                        <input type="range" id="temp-range" min="0" max="2" step="0.1" value="0">
+                    </div>
+
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="include-highlights"> Include Highlights
+                        </label>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="enable-streaming" checked> Enable Streaming
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="filter-input">Filter (JSON)</label>
+                        <textarea id="filter-input" placeholder="{}" rows="1"></textarea>
+                    </div>
+                </div>
+            </details>
+        </div>
+
+        <div class="input-area">
+            <textarea id="message-input" placeholder="Type a message..." rows="3"></textarea>
+            <div class="button-group">
+                <button id="send-btn">Send</button>
+                <button id="abort-btn" class="abort-btn hidden">Stop</button>
+            </div>
+        </div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

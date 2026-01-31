@@ -1,0 +1,445 @@
+{
+  "name": "pinecone-vscode",
+  "displayName": "Pinecone",
+  "description": "Manage Pinecone vector databases and AI assistants directly from VSCode",
+  "version": "0.1.0",
+  "publisher": "pinecone",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pinecone-io/pinecone-vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/pinecone-io/pinecone-vscode/issues"
+  },
+  "homepage": "https://docs.pinecone.io",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning",
+    "Data Science"
+  ],
+  "keywords": [
+    "pinecone",
+    "vector",
+    "database",
+    "embeddings",
+    "ai",
+    "machine learning",
+    "rag",
+    "semantic search"
+  ],
+  "activationEvents": [
+    "onView:pineconeExplorer",
+    "onCommand:pinecone.login",
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "icon": "media/pinecone-icon.png",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pinecone",
+          "title": "Pinecone",
+          "icon": "resources/pinecone-activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "pinecone": [
+        {
+          "id": "pineconeExplorer",
+          "name": "Explorer",
+          "contextualTitle": "Pinecone Explorer"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "pineconeExplorer",
+        "contents": "Welcome to Pinecone!\n\nConnect to your Pinecone account to manage indexes and assistants.\n\n[Login with Pinecone](command:pinecone.login)\n\n[View Documentation](command:pinecone.openDocs)",
+        "when": "!pinecone.isAuthenticated"
+      }
+    ],
+    "commands": [
+      {
+        "command": "pinecone.login",
+        "title": "Login with Pinecone",
+        "category": "Pinecone",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "pinecone.logout",
+        "title": "Logout",
+        "category": "Pinecone",
+        "icon": "$(sign-out)",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.refresh",
+        "title": "Refresh",
+        "category": "Pinecone",
+        "icon": "$(refresh)",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.openDocs",
+        "title": "Open Documentation",
+        "category": "Pinecone",
+        "icon": "$(book)"
+      },
+      {
+        "command": "pinecone.createIndex",
+        "title": "Create Index",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.queryIndex",
+        "title": "Query Index",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.indexStats",
+        "title": "View Index Stats",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.createBackup",
+        "title": "Create Backup",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.viewBackups",
+        "title": "View Backups",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.restoreBackup",
+        "title": "Restore from Backup",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.deleteBackup",
+        "title": "Delete Backup",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.viewRestoreJobs",
+        "title": "View All Restore Jobs",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.addTags",
+        "title": "Add Tags",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.configureIndex",
+        "title": "Configure Index",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.deleteIndex",
+        "title": "Delete Index",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.createAssistant",
+        "title": "Create Assistant",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.chatWithAssistant",
+        "title": "Chat",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.deleteAssistant",
+        "title": "Delete Assistant",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.uploadFiles",
+        "title": "Upload Files",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.deleteFile",
+        "title": "Delete File",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.createNamespace",
+        "title": "Create Namespace",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.describeNamespace",
+        "title": "View Details",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.deleteNamespace",
+        "title": "Delete Namespace",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.createProject",
+        "title": "Create Project",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.deleteProject",
+        "title": "Delete Project",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "pinecone.openDocs",
+          "when": "view == pineconeExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "pinecone.refresh",
+          "when": "view == pineconeExplorer && pinecone.isAuthenticated",
+          "group": "navigation@2"
+        },
+        {
+          "command": "pinecone.login",
+          "when": "view == pineconeExplorer && !pinecone.isAuthenticated",
+          "group": "navigation@3"
+        },
+        {
+          "command": "pinecone.logout",
+          "when": "view == pineconeExplorer && pinecone.isAuthenticated",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "pinecone.createIndex",
+          "when": "view == pineconeExplorer && viewItem == database-category",
+          "group": "1_create"
+        },
+        {
+          "command": "pinecone.queryIndex",
+          "when": "view == pineconeExplorer && (viewItem == index || viewItem == pod-index)",
+          "group": "1_query"
+        },
+        {
+          "command": "pinecone.indexStats",
+          "when": "view == pineconeExplorer && (viewItem == index || viewItem == pod-index)",
+          "group": "1_query@2"
+        },
+        {
+          "command": "pinecone.createBackup",
+          "when": "view == pineconeExplorer && viewItem == index",
+          "group": "2_backup@1"
+        },
+        {
+          "command": "pinecone.viewBackups",
+          "when": "view == pineconeExplorer && viewItem == index",
+          "group": "2_backup@2"
+        },
+        {
+          "command": "pinecone.restoreBackup",
+          "when": "view == pineconeExplorer && viewItem == index",
+          "group": "2_backup@3"
+        },
+        {
+          "command": "pinecone.deleteBackup",
+          "when": "view == pineconeExplorer && viewItem == index",
+          "group": "2_backup@4"
+        },
+        {
+          "command": "pinecone.addTags",
+          "when": "view == pineconeExplorer && viewItem == index",
+          "group": "3_configure@1"
+        },
+        {
+          "command": "pinecone.configureIndex",
+          "when": "view == pineconeExplorer && viewItem == index",
+          "group": "3_configure@2"
+        },
+        {
+          "command": "pinecone.deleteIndex",
+          "when": "view == pineconeExplorer && (viewItem == index || viewItem == pod-index)",
+          "group": "4_delete"
+        },
+        {
+          "command": "pinecone.createAssistant",
+          "when": "view == pineconeExplorer && viewItem == assistant-category",
+          "group": "1_create"
+        },
+        {
+          "command": "pinecone.chatWithAssistant",
+          "when": "view == pineconeExplorer && viewItem == assistant",
+          "group": "1_chat"
+        },
+        {
+          "command": "pinecone.deleteAssistant",
+          "when": "view == pineconeExplorer && viewItem == assistant",
+          "group": "2_delete"
+        },
+        {
+          "command": "pinecone.uploadFiles",
+          "when": "view == pineconeExplorer && viewItem == files-category",
+          "group": "1_upload"
+        },
+        {
+          "command": "pinecone.deleteFile",
+          "when": "view == pineconeExplorer && viewItem == file",
+          "group": "1_delete"
+        },
+        {
+          "command": "pinecone.createNamespace",
+          "when": "view == pineconeExplorer && viewItem == namespaces-category",
+          "group": "1_create"
+        },
+        {
+          "command": "pinecone.createBackup",
+          "when": "view == pineconeExplorer && viewItem == backups-category",
+          "group": "1_create"
+        },
+        {
+          "command": "pinecone.viewRestoreJobs",
+          "when": "view == pineconeExplorer && viewItem == backups-category",
+          "group": "2_view"
+        },
+        {
+          "command": "pinecone.restoreBackup",
+          "when": "view == pineconeExplorer && viewItem == backup",
+          "group": "1_actions"
+        },
+        {
+          "command": "pinecone.deleteBackup",
+          "when": "view == pineconeExplorer && viewItem == backup",
+          "group": "2_delete"
+        },
+        {
+          "command": "pinecone.describeNamespace",
+          "when": "view == pineconeExplorer && viewItem == namespace",
+          "group": "1_info"
+        },
+        {
+          "command": "pinecone.deleteNamespace",
+          "when": "view == pineconeExplorer && viewItem == namespace",
+          "group": "2_delete"
+        },
+        {
+          "command": "pinecone.createProject",
+          "when": "view == pineconeExplorer && viewItem == organization",
+          "group": "1_create"
+        },
+        {
+          "command": "pinecone.deleteProject",
+          "when": "view == pineconeExplorer && viewItem == project",
+          "group": "2_delete"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "pinecone.logout",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.refresh",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.createIndex",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.createAssistant",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.viewRestoreJobs",
+          "when": "pinecone.isAuthenticated"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Pinecone",
+      "properties": {
+        "pinecone.environment": {
+          "type": "string",
+          "default": "production",
+          "enum": [
+            "production",
+            "staging"
+          ],
+          "description": "Pinecone environment (production or staging)"
+        },
+        "pinecone.defaultRegion": {
+          "type": "string",
+          "default": "us",
+          "enum": [
+            "us",
+            "eu"
+          ],
+          "description": "Default region for creating assistants"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "lint:fix": "eslint src --ext ts --fix",
+    "test": "vscode-test",
+    "test:coverage": "vscode-test --coverage"
+  },
+  "devDependencies": {
+    "@types/form-data": "^2.2.1",
+    "@types/glob": "^8.1.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "18.x",
+    "@types/node-fetch": "^2.6.13",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "@vscode/test-cli": "^0.0.4",
+    "@vscode/test-electron": "^2.3.8",
+    "eslint": "^8.54.0",
+    "glob": "^10.3.10",
+    "mocha": "^10.2.0",
+    "typescript": "^5.3.2"
+  },
+  "dependencies": {
+    "form-data": "^4.0.5",
+    "js-yaml": "^4.1.0",
+    "node-fetch": "^2.7.0"
+  }
+}

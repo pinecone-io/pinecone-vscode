@@ -1,0 +1,42 @@
+{
+  "namespaces": [
+    {
+      "name": "",
+      "record_count": 5000,
+      "schema": null,
+      "indexed_fields": {}
+    },
+    {
+      "name": "documents",
+      "record_count": 12500,
+      "schema": {
+        "category": { "filterable": true },
+        "author": { "filterable": true }
+      },
+      "indexed_fields": {
+        "category": {},
+        "author": {}
+      }
+    },
+    {
+      "name": "products",
+      "record_count": 3200,
+      "schema": {
+        "brand": { "filterable": true },
+        "price_range": { "filterable": true }
+      },
+      "indexed_fields": {
+        "brand": {},
+        "price_range": {}
+      }
+    },
+    {
+      "name": "images",
+      "record_count": 850,
+      "schema": null,
+      "indexed_fields": {}
+    }
+  ],
+  "total_count": 4,
+  "pagination": null
+}

@@ -1,0 +1,38 @@
+{
+    "matches": [
+        {
+            "id": "vec-001",
+            "score": 0.95,
+            "values": [0.1, 0.2, 0.3, 0.4, 0.5],
+            "metadata": {
+                "title": "Introduction to Vector Databases",
+                "category": "documentation",
+                "published": true
+            }
+        },
+        {
+            "id": "vec-002",
+            "score": 0.89,
+            "values": [0.2, 0.3, 0.4, 0.5, 0.6],
+            "metadata": {
+                "title": "Pinecone Quick Start Guide",
+                "category": "tutorial",
+                "published": true
+            }
+        },
+        {
+            "id": "vec-003",
+            "score": 0.82,
+            "values": [0.3, 0.4, 0.5, 0.6, 0.7],
+            "metadata": {
+                "title": "Advanced Query Techniques",
+                "category": "documentation",
+                "published": false
+            }
+        }
+    ],
+    "namespace": "default",
+    "usage": {
+        "read_units": 5
+    }
+}

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Query Index</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Query: <span id="index-name">${indexName}</span></h2>
+            <p id="embed-info" class="hidden embed-info"></p>
+        </div>
+        
+        <div class="input-section">
+            <!-- Text search input (for integrated embeddings) -->
+            <div id="text-search-section" class="form-group hidden">
+                <label for="text-input">Search Text</label>
+                <textarea id="text-input" placeholder="Enter your search query..." rows="3"></textarea>
+                <small class="hint">This index uses integrated embeddings - just enter text and Pinecone will convert it to a vector automatically.</small>
+            </div>
+
+            <!-- Vector search input (for standard indexes) -->
+            <div id="vector-search-section">
+                <div class="form-group">
+                    <label for="vector-input">Vector (JSON array)</label>
+                    <textarea id="vector-input" placeholder="[0.1, 0.2, ...]" rows="3"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="id-input">Or Query by ID</label>
+                    <input type="text" id="id-input" placeholder="vector-id">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="namespace-input">Namespace</label>
+                    <input type="text" id="namespace-input" placeholder="Default">
+                </div>
+                <div class="form-group">
+                    <label for="top-k-input">Top K</label>
+                    <input type="number" id="top-k-input" value="10" min="1" max="10000">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="filter-input">Filter (JSON)</label>
+                <textarea id="filter-input" placeholder='{"genre": "action"}' rows="2"></textarea>
+            </div>
+
+            <div class="checkbox-group">
+                <label>
+                    <input type="checkbox" id="include-values" checked> Include Values
+                </label>
+                <label id="metadata-option">
+                    <input type="checkbox" id="include-metadata" checked> Include Metadata
+                </label>
+            </div>
+
+            <button id="query-btn">Search</button>
+        </div>
+
+        <div id="loading" class="hidden">Searching...</div>
+        <div id="error" class="error hidden"></div>
+
+        <div id="results" class="results-section hidden">
+            <h3>Matches</h3>
+            <div id="matches-list"></div>
+        </div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

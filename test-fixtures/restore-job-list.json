@@ -1,0 +1,47 @@
+{
+  "data": [
+    {
+      "restore_job_id": "rj-completed-123",
+      "backup_id": "backup-abc123",
+      "target_index_name": "restored-production-index",
+      "target_index_id": "idx-restored-001",
+      "status": "Completed",
+      "created_at": "2024-01-15T10:30:00Z",
+      "completed_at": "2024-01-15T10:45:00Z",
+      "percent_complete": 100
+    },
+    {
+      "restore_job_id": "rj-inprogress-456",
+      "backup_id": "backup-def456",
+      "target_index_name": "restored-staging-index",
+      "target_index_id": "idx-restored-002",
+      "status": "InProgress",
+      "created_at": "2024-01-15T14:00:00Z",
+      "completed_at": null,
+      "percent_complete": 65
+    },
+    {
+      "restore_job_id": "rj-failed-789",
+      "backup_id": "backup-ghi789",
+      "target_index_name": "failed-restore-index",
+      "target_index_id": "idx-restored-003",
+      "status": "Failed",
+      "created_at": "2024-01-14T08:00:00Z",
+      "completed_at": "2024-01-14T08:15:00Z",
+      "percent_complete": 23
+    },
+    {
+      "restore_job_id": "rj-recent-101",
+      "backup_id": "backup-jkl101",
+      "target_index_name": "dev-index-copy",
+      "target_index_id": "idx-restored-004",
+      "status": "InProgress",
+      "created_at": "2024-01-15T16:30:00Z",
+      "completed_at": null,
+      "percent_complete": 12
+    }
+  ],
+  "pagination": {
+    "next": null
+  }
+}
