@@ -12,7 +12,8 @@ import { PineconeTreeDataProvider } from '../providers/pineconeTreeDataProvider'
 import { ChatPanel } from '../webview/chatPanel';
 import { AssistantModel } from '../api/types';
 import { buildProjectContextFromItem } from '../utils/treeItemHelpers';
-import { POLLING_CONFIG } from '../utils/constants';
+import { classifyError } from '../utils/errorHandling';
+import { refreshExplorer } from '../utils/refreshExplorer';
 
 /**
  * Handles all assistant-related commands in the extension.
@@ -119,7 +120,11 @@ export class AssistantCommands {
             vscode.window.showInformationMessage(
                 `Assistant "${name}" created successfully. Upload files to start using it.`
             );
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({
+                treeDataProvider: this.treeDataProvider,
+                delayMs: 0,
+                focusExplorer: false
+            });
         } catch (e: unknown) {
             this.handleError('create assistant', e);
         }
@@ -193,21 +198,8 @@ export class AssistantCommands {
                 await this.pineconeService.deleteAssistant(name, projectContext);
             });
             vscode.window.showInformationMessage(`Assistant "${name}" deleted successfully`);
-            
-            // Refresh after successful deletion using triple-refresh approach
-            // This ensures the tree view updates in Cursor IDE
-            setTimeout(async () => {
-                // Approach 1: Direct call to treeDataProvider (if available)
-                if (this.treeDataProvider) {
-                    this.treeDataProvider.refresh();
-                }
-                
-                // Approach 2: Execute refresh command
-                await vscode.commands.executeCommand('pinecone.refresh');
-                
-                // Approach 3: Focus on the explorer to force UI update
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
         } catch (e: unknown) {
             this.handleError('delete assistant', e);
         }
@@ -252,33 +244,36 @@ export class AssistantCommands {
      * @param error - The error that occurred
      */
     private handleError(operation: string, error: unknown): void {
-        const message = error instanceof Error ? error.message : String(error);
-        
-        // Check for common error patterns and provide guidance
-        if (message.includes('401') || message.includes('unauthorized')) {
+        const classified = classifyError(error);
+
+        if (classified.requiresLogin) {
             vscode.window.showErrorMessage(
-                `Failed to ${operation}: Authentication expired. Please log in again.`,
+                `Failed to ${operation}: ${classified.userMessage}`,
                 'Login'
             ).then(selection => {
                 if (selection === 'Login') {
                     vscode.commands.executeCommand('pinecone.login');
                 }
             });
-        } else if (message.includes('409') || message.includes('already exists')) {
+        } else if (classified.category === 'conflict') {
             vscode.window.showErrorMessage(
-                `Failed to ${operation}: An assistant with this name already exists.`
+                `Failed to ${operation}: ${classified.userMessage}`
             );
-        } else if (message.includes('404') || message.includes('not found')) {
+        } else if (classified.suggestRefresh) {
             vscode.window.showErrorMessage(
-                `Failed to ${operation}: Assistant not found. It may have been deleted.`,
+                `Failed to ${operation}: ${classified.userMessage}`,
                 'Refresh'
             ).then(selection => {
                 if (selection === 'Refresh') {
-                    vscode.commands.executeCommand('pinecone.refresh');
+                    void refreshExplorer({
+                        treeDataProvider: this.treeDataProvider,
+                        delayMs: 0,
+                        focusExplorer: false
+                    });
                 }
             });
         } else {
-            vscode.window.showErrorMessage(`Failed to ${operation}: ${message}`);
+            vscode.window.showErrorMessage(`Failed to ${operation}: ${classified.userMessage}`);
         }
     }
 }

@@ -40,6 +40,7 @@
 import * as vscode from 'vscode';
 import { PineconeApiError } from '../api/client';
 import { createComponentLogger } from './logger';
+import { refreshExplorer } from './refreshExplorer';
 
 /** Logger for error handling */
 const log = createComponentLogger('ErrorHandler');
@@ -380,7 +381,7 @@ function handleErrorAction(selection: string | undefined, onAction?: (action: st
             vscode.commands.executeCommand('pinecone.login');
             break;
         case 'Refresh':
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({ delayMs: 0, focusExplorer: false });
             break;
         case 'Retry':
             // Retry is handled by the caller via onAction

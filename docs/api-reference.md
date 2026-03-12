@@ -1,418 +1,134 @@
 # API Reference
 
-This document describes the internal API structure of the Pinecone VSCode extension for contributors and developers extending the extension.
-
-## Table of Contents
-
-- [Services](#services)
-- [API Clients](#api-clients)
-- [Commands](#commands)
-- [Providers](#providers)
-- [Types](#types)
-- [Utilities](#utilities)
+This is the contributor-facing API map for runtime code in `src/`.
 
 ## Services
 
-### AuthService
+### `AuthService` (`src/services/authService.ts`)
 
-Manages authentication state and OAuth2 flow.
+Responsibilities:
 
-```typescript
-import { AuthService } from './services/authService';
+- Detect CLI-compatible auth state from `~/.config/pinecone`.
+- Perform OAuth login/logout.
+- Refresh OAuth tokens.
+- Create/reuse managed API keys for JWT contexts.
 
-const authService = new AuthService(context.secrets);
+Key methods:
 
-// Check authentication status
-const isAuth = authService.isAuthenticated();
-const context = authService.getAuthContext(); // 'user_token' | 'api_key' | 'service_account'
+- `login(timeoutMs?)`
+- `logout()`
+- `isAuthenticated()`
+- `getAuthContext()`
+- `getAccessToken()`
+- `getOrCreateManagedKey(projectId, projectName, organizationId)`
 
-// Get access token (for API calls)
-const token = await authService.getAccessToken();
+### `PineconeService` (`src/services/pineconeService.ts`)
 
-// Login/logout
-await authService.login();
-await authService.logout();
+Facade that composes control/data/assistant/admin/namespace clients.
 
-// Listen for auth changes
-authService.onDidChangeAuth(() => {
-    console.log('Auth state changed');
-});
-```
+Key methods:
 
-### PineconeService
-
-High-level facade for all Pinecone operations.
-
-```typescript
-import { PineconeService } from './services/pineconeService';
-
-const pineconeService = new PineconeService(authService);
-
-// Set project context (required for JWT auth)
-pineconeService.setProjectId('proj-123');
-
-// Index operations
-const indexes = await pineconeService.listIndexes();
-const index = await pineconeService.createIndex({ name: 'my-index', dimension: 1536 });
-await pineconeService.deleteIndex('my-index');
-
-// Assistant operations
-const assistants = await pineconeService.listAssistants();
-const assistant = await pineconeService.createAssistant('my-assistant', 'us', 'Instructions');
-
-// Organization/Project (OperationResult pattern)
-const orgsResult = await pineconeService.listOrganizations();
-if (orgsResult.success) {
-    console.log(orgsResult.data);
-} else {
-    console.error(orgsResult.error);
-}
-
-// Access lower-level APIs
-const controlPlane = pineconeService.getControlPlane();
-const dataPlane = pineconeService.getDataPlane();
-const assistantApi = pineconeService.getAssistantApi();
-```
-
-### ConfigService
-
-Manages CLI-compatible configuration files.
-
-```typescript
-import { ConfigService } from './services/configService';
-
-const configService = new ConfigService();
-
-// Secrets (OAuth tokens, API keys)
-const secrets = configService.getSecrets();
-configService.saveSecrets({ api_key: 'pk-...' });
-
-// State (current context)
-const state = configService.getState();
-configService.setTargetOrganization({ id: 'org-1', name: 'My Org' });
-configService.setTargetProject({ id: 'proj-1', name: 'My Project' });
-
-// App config (preferences)
-const config = configService.getConfig();
-configService.saveConfig({ default_region: 'us-west-2' });
-```
+- Index: `listIndexes`, `createIndex`, `createIndexForModel`, `describeIndex`, `configureIndex`, `deleteIndex`, `describeIndexStats`
+- Assistant: `listAssistants`, `createAssistant`, `describeAssistant`, `deleteAssistant`
+- Org/Project: `listOrganizations`, `listProjects` (OperationResult pattern)
+- Context: `setProjectId`, `setFullProjectContext`, `clearFullProjectContext`, `clearTargetContext`
 
 ## API Clients
 
-### PineconeClient
+### `PineconeClient` (`src/api/client.ts`)
 
-Base HTTP client for authenticated API requests.
+Core authenticated HTTP client with:
 
-```typescript
-import { PineconeClient } from './api/client';
+- API version header injection,
+- auth mode switching (Api-Key vs Bearer + `X-Project-Id`),
+- per-request project context override,
+- timeout and structured error handling (`PineconeApiError`).
 
-const client = new PineconeClient(authService);
-client.setProjectId('proj-123'); // Required for JWT auth
+### `ControlPlaneApi` (`src/api/controlPlane.ts`)
 
-// Make requests
-const indexes = await client.request<{ indexes: IndexModel[] }>('GET', '/indexes');
-const index = await client.request<IndexModel>('POST', '/indexes', {
-    body: { name: 'test', dimension: 1536, metric: 'cosine' }
-});
+Control-plane index/backup/restore operations.
 
-// Data plane requests (with host)
-const stats = await client.request<IndexStats>('POST', '/describe_index_stats', {
-    host: 'https://my-index.svc.pinecone.io'
-});
-```
+Selected methods:
 
-### ControlPlaneApi
+- `listIndexes(projectContext?)`
+- `createIndex(index)`
+- `createIndexForModel(request)`
+- `describeIndex(name, projectContext?)`
+- `configureIndex(name, config)`
+- `deleteIndex(name)`
+- `describeIndexStats(host)`
+- `createBackup`, `listBackups`, `describeBackup`, `deleteBackup`
+- `createIndexFromBackup`, `listRestoreJobs`, `describeRestoreJob`
 
-Index and backup operations.
+### `DataPlaneApi` (`src/api/dataPlane.ts`)
 
-```typescript
-import { ControlPlaneApi } from './api/controlPlane';
+Index data-plane operations.
 
-const api = new ControlPlaneApi(client);
+- `query(host, { top_k, vector|id, ... }, projectContext?)`
+- `search(host, { namespace, query, fields?, rerank? }, projectContext?)`
 
-// Indexes
-const indexes = await api.listIndexes();
-const index = await api.createIndex({ name: 'test', dimension: 1536 });
-const index = await api.createIndexForModel({ name: 'embed-index', cloud: 'aws', ... });
-await api.configureIndex('test', { deletionProtection: 'enabled' });
-await api.deleteIndex('test');
+Notes:
 
-// Backups
-const backups = await api.listBackups();
-const backup = await api.createBackup('my-index', 'backup-name');
-await api.deleteBackup('backup-123');
+- `search` uses `/records/namespaces/{namespace}/search`.
+- Empty namespace is normalized to `__default__`.
 
-// Restore Jobs
-const job = await api.createIndexFromBackup('backup-123', 'new-index');
-const jobs = await api.listRestoreJobs();
-```
+### `NamespaceApi` (`src/api/namespaceApi.ts`)
 
-### DataPlaneApi
+Namespace CRUD on index hosts.
 
-Vector and record operations.
+- `listNamespaces(host, params?, projectContext?)`
+- `createNamespace(host, params, projectContext?)`
+- `describeNamespace(host, namespaceName, projectContext?)`
+- `deleteNamespace(host, namespaceName, projectContext?)`
 
-```typescript
-import { DataPlaneApi } from './api/dataPlane';
+### `AssistantApi` (`src/api/assistantApi.ts`)
 
-const api = new DataPlaneApi(client);
+Assistant control + data plane operations.
 
-// Vector query
-const results = await api.query(host, {
-    vector: [0.1, 0.2, 0.3, ...],
-    topK: 10,
-    namespace: 'my-namespace',
-    includeValues: true,
-    includeMetadata: true
-});
-
-// Text search (integrated embeddings)
-const results = await api.search(host, {
-    query: { inputs: { text: 'search query' }, top_k: 10 },
-    namespace: 'default'
-});
-```
-
-### AssistantApi
-
-Assistant operations including streaming chat.
-
-```typescript
-import { AssistantApi } from './api/assistantApi';
-
-const api = new AssistantApi(client, authService);
-
-// List assistants
-const assistants = await api.listAssistants();
-
-// Create/delete
-const assistant = await api.createAssistant('name', 'us', 'instructions');
-await api.deleteAssistant('name');
-
-// Non-streaming chat
-const response = await api.chat(host, assistantName, messages, { model: 'gpt-4o' });
-
-// Streaming chat
-await api.chatStream(host, assistantName, messages, {
-    model: 'gpt-4o',
-    stream: true,
-    onChunk: (chunk) => console.log(chunk),
-    onError: (error) => console.error(error),
-    onComplete: () => console.log('Done')
-});
-
-// File operations
-const files = await api.listFiles(host, assistantName);
-const file = await api.uploadFile(host, assistantName, '/path/to/file.pdf');
-await api.deleteFile(host, assistantName, fileId);
-```
-
-### AdminApiClient
-
-Organization and project management.
-
-```typescript
-import { AdminApiClient } from './api/adminApi';
-
-const api = new AdminApiClient();
-
-// Organizations
-const orgs = await api.listOrganizations(jwtToken);
-
-// Projects
-const projects = await api.listProjects(jwtToken, organizationId);
-await api.createProject(jwtToken, organizationId, 'project-name');
-await api.deleteProject(jwtToken, projectId);
-```
-
-### NamespaceApi
-
-Namespace operations.
-
-```typescript
-import { NamespaceApi } from './api/namespaceApi';
-
-const api = new NamespaceApi(client);
-
-const namespaces = await api.listNamespaces(host);
-const ns = await api.describeNamespace(host, 'my-namespace');
-await api.deleteNamespace(host, 'my-namespace');
-```
-
-## Commands
-
-Command handlers are organized by resource type:
-
-| Module | Commands |
-|--------|----------|
-| `auth.ts` | `login`, `logout` |
-| `index.commands.ts` | `createIndex`, `deleteIndex`, `configureIndex`, `queryIndex`, `createBackup`, etc. |
-| `assistant.commands.ts` | `createAssistant`, `deleteAssistant`, `chatWithAssistant` |
-| `file.commands.ts` | `uploadFiles`, `deleteFile` |
-| `namespace.commands.ts` | `createNamespace`, `describeNamespace`, `deleteNamespace` |
-| `project.commands.ts` | `createProject`, `deleteProject` |
-
-## Providers
-
-### PineconeTreeDataProvider
-
-Provides data for the tree view.
-
-```typescript
-import { PineconeTreeDataProvider } from './providers/pineconeTreeDataProvider';
-
-const provider = new PineconeTreeDataProvider(pineconeService, authService);
-vscode.window.registerTreeDataProvider('pineconeExplorer', provider);
-
-// Refresh the tree
-provider.refresh();
-```
-
-### PineconeTreeItem
-
-Tree item representation with type information.
-
-```typescript
-import { PineconeTreeItem, PineconeItemType } from './providers/treeItems';
-
-const item = new PineconeTreeItem(
-    'My Index',                              // label
-    PineconeItemType.Index,                  // type
-    vscode.TreeItemCollapsibleState.Collapsed,
-    'index-123',                             // resourceId
-    'proj-456',                              // parentId
-    { index: indexModel }                    // metadata
-);
-```
-
-## Types
-
-### Core Types
-
-```typescript
-// Index model
-interface IndexModel {
-    name: string;
-    dimension: number;
-    metric: 'cosine' | 'dotproduct' | 'euclidean';
-    host: string;
-    status: { ready: boolean; state: string };
-    spec?: {
-        serverless?: { cloud: string; region: string };
-        pod?: { environment: string; pod_type: string };
-    };
-    vector_type?: 'dense' | 'sparse';
-    embed?: IndexEmbedConfig;
-}
-
-// Assistant model
-interface AssistantModel {
-    name: string;
-    status: string;
-    host: string;
-    instructions?: string;
-    metadata?: Record<string, string>;
-}
-
-// Query response
-interface QueryResponse {
-    matches: Array<{
-        id: string;
-        score: number;
-        values?: number[];
-        metadata?: Record<string, unknown>;
-    }>;
-    namespace: string;
-}
-```
-
-### Error Types
-
-```typescript
-import { PineconeApiError } from './api/client';
-
-try {
-    await api.describeIndex('nonexistent');
-} catch (error) {
-    if (error instanceof PineconeApiError) {
-        console.log(error.status);     // HTTP status code
-        console.log(error.message);    // Error message
-        console.log(error.apiMessage); // Raw API message
-    }
-}
-```
-
-### OperationResult Pattern
-
-Used for operations that should not throw on failure:
-
-```typescript
-interface OperationResult<T> {
-    success: boolean;
-    data?: T;
-    error?: string;
-}
-
-const result = await pineconeService.listOrganizations();
-if (result.success) {
-    // Use result.data
-} else {
-    // Handle result.error
-}
-```
+- Control plane: `listAssistants`, `createAssistant`, `describeAssistant`, `deleteAssistant`
+- Data plane: `chat`, `chatStream`, `listFiles`, `uploadFile`, `deleteFile`
 
 ## Utilities
 
-### Logger
+### `src/api/host.ts`
 
-Centralized logging with component prefixes.
+- `normalizeHost(host)` ensures protocol-safe host handling.
 
-```typescript
-import { logger, createComponentLogger } from './utils/logger';
+### `src/utils/treeItemHelpers.ts`
 
-// Global logger
-logger.info('Extension activated');
-logger.warn('Warning message');
-logger.error('Error occurred', error);
-logger.debug('Debug info'); // Only in development
+- `extractProjectId(item)`
+- `buildProjectContextFromItem(item)`
+- `setProjectContextFromItem(item, service)`
 
-// Component-specific logger
-const log = createComponentLogger('MyComponent');
-log.info('Component message'); // Outputs: [Pinecone][MyComponent] Component message
-```
+Organization ID fallback is:
 
-### Constants
+- `metadata.organization.id` first,
+- then `metadata.project.organization_id`.
 
-```typescript
-import {
-    AUTH_CONTEXTS,           // Authentication context values
-    OAUTH_CONFIG,            // OAuth2 configuration
-    OAUTH_CALLBACK_PORT,     // OAuth callback port (59049)
-    getApiBaseUrl,           // Get API URL by region
-    getErrorMessage,         // Extract error message from unknown
-} from './utils/constants';
-```
+### `src/utils/refreshExplorer.ts`
 
-## Extension Lifecycle
+- `refreshExplorer(options?)` is the canonical refresh path used by command handlers.
+- It coalesces burst refresh calls and executes one standardized sequence.
 
-```typescript
-// extension.ts
-export function activate(context: vscode.ExtensionContext): void {
-    // Initialize services
-    const authService = new AuthService(context.secrets);
-    const pineconeService = new PineconeService(authService);
-    
-    // Register providers
-    const treeProvider = new PineconeTreeDataProvider(pineconeService, authService);
-    vscode.window.registerTreeDataProvider('pineconeExplorer', treeProvider);
-    
-    // Register commands
-    context.subscriptions.push(
-        vscode.commands.registerCommand('pinecone.login', () => authCommands.login()),
-        // ... more commands
-    );
-}
+### `src/utils/errorHandling.ts`
 
-export function deactivate(): void {
-    // Cleanup if needed
-}
-```
+Canonical classifier/handlers:
+
+- `classifyError(error)`
+- `isAuthenticationError(error)`
+- `isNetworkError(error)`
+- `handleError(error, options)`
+- `handleTreeProviderError(error, operation)`
+
+## Command Surface
+
+Commands keep IDs stable in `package.json`; implementation files:
+
+- `src/commands/auth.ts`
+- `src/commands/index.commands.ts`
+- `src/commands/assistant.commands.ts`
+- `src/commands/file.commands.ts`
+- `src/commands/namespace.commands.ts`
+- `src/commands/project.commands.ts`
+
+All mutation commands should route explorer updates through `refreshExplorer()`.

@@ -20,8 +20,8 @@
  * export PINECONE_API_KEY=your-api-key
  * export PINECONE_INTEGRATION_TESTS=true
  * 
- * # Run tests
- * npm test
+ * # Run integration tests
+ * npm run test:integration
  * ```
  * 
  * ## CI Configuration
@@ -33,7 +33,7 @@
  *   env:
  *     PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
  *     PINECONE_INTEGRATION_TESTS: true
- *   run: npm test
+ *   run: npm run test:integration
  * ```
  * 
  * @module test/integration

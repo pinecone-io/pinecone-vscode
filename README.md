@@ -332,7 +332,19 @@ npm install
 # Start development
 npm run watch
 
+# Validate before opening a PR
+npm run check-types
+npm run lint
+npm test
+npm run test:coverage
+
 # Press F5 to debug
+```
+
+Optional integration smoke tests:
+
+```bash
+PINECONE_API_KEY=... PINECONE_INTEGRATION_TESTS=true npm run test:integration
 ```
 
 ## License

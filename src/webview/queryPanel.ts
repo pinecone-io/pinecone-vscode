@@ -14,7 +14,7 @@ import { PineconeService } from '../services/pineconeService';
 import { QueryParams, SearchParams } from '../api/dataPlane';
 import { IndexEmbedConfig } from '../api/types';
 import { ProjectContext } from '../api/client';
-import { getErrorMessage } from '../utils/errorHandling';
+import { classifyError } from '../utils/errorHandling';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -273,13 +273,13 @@ export class QueryPanel {
             }
             
         } catch (e: unknown) {
-            const message = getErrorMessage(e);
+            const classified = classifyError(e);
             
             // Check if this is an authentication error
-            if (this.isAuthError(message)) {
+            if (classified.requiresLogin) {
                 this._panel.webview.postMessage({ command: 'authExpired' });
             } else {
-                this._panel.webview.postMessage({ command: 'error', message });
+                this._panel.webview.postMessage({ command: 'error', message: classified.userMessage });
             }
         }
     }
@@ -374,17 +374,5 @@ export class QueryPanel {
         // Execute query
         const result = await this.pineconeService.getDataPlane().query(this._indexHost, queryParams, this._projectContext);
         this._panel.webview.postMessage({ command: 'result', data: result });
-    }
-
-    /**
-     * Checks if an error message indicates an authentication problem.
-     */
-    private isAuthError(message: string): boolean {
-        const lowerMessage = message.toLowerCase();
-        return lowerMessage.includes('401') ||
-               lowerMessage.includes('unauthorized') ||
-               lowerMessage.includes('token expired') ||
-               lowerMessage.includes('authentication failed') ||
-               lowerMessage.includes('not authenticated');
     }
 }

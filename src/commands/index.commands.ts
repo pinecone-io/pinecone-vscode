@@ -12,7 +12,7 @@
  * 2. Show interactive wizard for user input
  * 3. Call PineconeService API method
  * 4. Show success/error message
- * 5. Refresh tree view (triple-refresh pattern for reliability)
+ * 5. Refresh tree view via shared refreshExplorer() helper
  * 
  * ## Error Handling
  * 
@@ -30,6 +30,7 @@ import { IndexModel, ServerlessSpec, PodSpec, RestoreJob, CreateIndexForModelReq
 import { CLOUD_REGIONS, EMBEDDING_MODELS, POLLING_CONFIG } from '../utils/constants';
 import { getErrorMessage } from '../utils/errorHandling';
 import { buildProjectContextFromItem, setProjectContextFromItem } from '../utils/treeItemHelpers';
+import { refreshExplorer } from '../utils/refreshExplorer';
 
 /**
  * Handles all index-related commands in the extension.
@@ -49,14 +50,6 @@ export class IndexCommands {
         private treeDataProvider: PineconeTreeDataProvider,
         private treeView?: vscode.TreeView<PineconeTreeItem>
     ) {}
-    
-    /**
-     * Refreshes the tree view after an operation.
-     * Direct call to avoid issues with command execution timing.
-     */
-    private refreshTree(): void {
-        this.treeDataProvider.refresh();
-    }
 
     /**
      * Creates a new serverless index using an interactive wizard.
@@ -264,13 +257,8 @@ export class IndexCommands {
             });
             
             vscode.window.showInformationMessage(`Index "${name}" created successfully`);
-            
-            // Refresh after index is ready using triple-refresh approach
-            setTimeout(async () => {
-                this.treeDataProvider.refresh();
-                await vscode.commands.executeCommand('pinecone.refresh');
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to create index: ${message}`);
@@ -430,13 +418,8 @@ export class IndexCommands {
             });
             
             vscode.window.showInformationMessage(`Index "${name}" created successfully`);
-            
-            // Refresh after index is ready using triple-refresh approach
-            setTimeout(async () => {
-                this.treeDataProvider.refresh();
-                await vscode.commands.executeCommand('pinecone.refresh');
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to create index: ${message}`);
@@ -501,7 +484,11 @@ export class IndexCommands {
                 try {
                     await this.pineconeService.configureIndex(name, { deletion_protection: 'disabled' });
                     vscode.window.showInformationMessage('Deletion protection disabled. Please try deleting again.');
-                    vscode.commands.executeCommand('pinecone.refresh');
+                    void refreshExplorer({
+                        treeDataProvider: this.treeDataProvider,
+                        delayMs: 0,
+                        focusExplorer: false
+                    });
                 } catch (e: unknown) {
                     const message = getErrorMessage(e);
                     vscode.window.showErrorMessage(`Failed to disable protection: ${message}`);
@@ -544,18 +531,7 @@ export class IndexCommands {
             return; // Don't refresh on error
         }
         
-        // Refresh after successful deletion using triple-refresh approach
-        // This ensures the tree view updates in Cursor IDE
-        setTimeout(async () => {
-            // Approach 1: Direct call to treeDataProvider
-            this.treeDataProvider.refresh();
-            
-            // Approach 2: Execute refresh command
-            await vscode.commands.executeCommand('pinecone.refresh');
-            
-            // Approach 3: Focus on the explorer to force UI update
-            await vscode.commands.executeCommand('pineconeExplorer.focus');
-        }, POLLING_CONFIG.REFRESH_DELAY_MS);
+        void refreshExplorer({ treeDataProvider: this.treeDataProvider });
     }
 
     /**
@@ -640,7 +616,11 @@ export class IndexCommands {
             try {
                 await this.pineconeService.configureIndex(name, { deletion_protection: newState });
                 vscode.window.showInformationMessage(`Deletion protection ${newState} for "${name}"`);
-                vscode.commands.executeCommand('pinecone.refresh');
+                void refreshExplorer({
+                    treeDataProvider: this.treeDataProvider,
+                    delayMs: 0,
+                    focusExplorer: false
+                });
             } catch (e: unknown) {
                 const message = getErrorMessage(e);
                 vscode.window.showErrorMessage(`Failed to update deletion protection: ${message}`);
@@ -683,7 +663,11 @@ export class IndexCommands {
                 });
             });
             vscode.window.showInformationMessage(`Replicas updated to ${replicas} for "${name}"`);
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({
+                treeDataProvider: this.treeDataProvider,
+                delayMs: 0,
+                focusExplorer: false
+            });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to update replicas: ${message}`);
@@ -737,7 +721,11 @@ export class IndexCommands {
                     ? `Tags updated for "${name}"` 
                     : `Tags cleared for "${name}"`
             );
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({
+                treeDataProvider: this.treeDataProvider,
+                delayMs: 0,
+                focusExplorer: false
+            });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to update tags: ${message}`);
@@ -828,13 +816,8 @@ export class IndexCommands {
             });
             
             vscode.window.showInformationMessage(`Backup "${backupName}" created successfully`);
-            
-            // Refresh after backup completion using triple-refresh approach
-            setTimeout(async () => {
-                this.treeDataProvider.refresh();
-                await vscode.commands.executeCommand('pinecone.refresh');
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to create backup: ${message}`);
@@ -1155,13 +1138,8 @@ export class IndexCommands {
             });
 
             vscode.window.showInformationMessage(`Index "${newIndexName}" restored successfully`);
-            
-            // Refresh after completion using triple-refresh approach
-            setTimeout(async () => {
-                this.treeDataProvider.refresh();
-                await vscode.commands.executeCommand('pinecone.refresh');
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
 
         } catch (e: unknown) {
             const message = getErrorMessage(e);
@@ -1290,19 +1268,8 @@ export class IndexCommands {
             });
 
             vscode.window.showInformationMessage(`Backup "${backupToDelete.name}" deleted successfully`);
-            
-            // Refresh after successful deletion using triple-refresh approach
-            // This ensures the tree view updates in Cursor IDE
-            setTimeout(async () => {
-                // Approach 1: Direct call to treeDataProvider
-                this.treeDataProvider.refresh();
-                
-                // Approach 2: Execute refresh command
-                await vscode.commands.executeCommand('pinecone.refresh');
-                
-                // Approach 3: Focus on the explorer to force UI update
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
 
         } catch (e: unknown) {
             const message = getErrorMessage(e);

@@ -13,6 +13,7 @@
 
 import { PineconeClient, ProjectContext } from './client';
 import { QueryResponse } from './types';
+import { normalizeHost } from './host';
 
 /**
  * Parameters for a vector similarity query.
@@ -192,7 +193,7 @@ export class DataPlaneApi {
         projectContext?: ProjectContext
     ): Promise<QueryResponse> {
         return this.client.request<QueryResponse>('POST', '/query', {
-            host: `https://${host}`,
+            host: normalizeHost(host),
             body: params,
             projectContext
         });
@@ -266,7 +267,7 @@ export class DataPlaneApi {
         }
         
         return this.client.request<SearchResponse>('POST', `/records/namespaces/${namespace}/search`, {
-            host: `https://${host}`,
+            host: normalizeHost(host),
             body,
             projectContext
         });

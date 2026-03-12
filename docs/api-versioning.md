@@ -1,188 +1,84 @@
 # Pinecone API Versioning
 
-This document describes how the VSCode extension handles Pinecone API versioning and provides guidance for updating to new API versions.
+This document describes how the extension pins and validates Pinecone API behavior.
 
-## Current API Version
+## Current Version
 
-The extension currently uses **API version `2025-04`**.
+The extension sends `X-Pinecone-Api-Version: 2025-04` on all API requests.
 
-This version is defined in `src/utils/constants.ts`:
+Source of truth:
 
-```typescript
-export const API_VERSION = '2025-04';
-```
+- `src/utils/constants.ts`
+- `src/api/client.ts`
 
-## How API Versioning Works
+## Request Routing Model
 
-The Pinecone API uses date-based versioning. The version is sent with every API request via the `X-Pinecone-Api-Version` header.
+The extension uses three endpoint families:
 
-### Benefits of API Versioning
+1. Control plane (`https://api.pinecone.io`): index/project/backup/assistant control operations.
+2. Data plane (`https://{index-host}`): query/search/namespaces/index stats.
+3. Assistant data plane (`https://{assistant-host}`): chat and file operations.
 
-1. **Stability**: Your application won't break when Pinecone makes breaking changes
-2. **Predictability**: You control when to adopt new API features
-3. **Compatibility**: Responses match the documented schema for that version
+Host inputs are normalized centrally via `src/api/host.ts`, so both `host` and `https://host` are accepted.
 
-### Version Header
+## Endpoint Map (Current Runtime)
 
-All requests from the extension include:
+### Control plane
 
-```http
-X-Pinecone-Api-Version: 2025-04
-```
+- `GET /indexes`
+- `POST /indexes`
+- `POST /indexes/create-for-model`
+- `GET /indexes/{name}`
+- `PATCH /indexes/{name}`
+- `DELETE /indexes/{name}`
+- `GET /indexes/{indexName}/backups`
+- `POST /indexes/{indexName}/backups`
+- `GET /backups`
+- `GET /backups/{backupId}`
+- `DELETE /backups/{backupId}`
+- `POST /indexes/create-from-backup`
+- `GET /restore-jobs`
+- `GET /restore-jobs/{restoreJobId}`
+- `GET /assistant/assistants`
+- `POST /assistant/assistants`
+- `GET /assistant/assistants/{name}`
+- `DELETE /assistant/assistants/{name}`
 
-This is set in the HTTP client (`src/api/client.ts`).
+### Data plane (index host)
 
-## Updating API Version
+- `POST /query`
+- `POST /records/namespaces/{namespace}/search`
+- `GET /namespaces`
+- `POST /namespaces`
+- `GET /namespaces/{namespace}`
+- `DELETE /namespaces/{namespace}`
+- `POST /describe_index_stats`
 
-When Pinecone releases a new API version with features you want to use:
+### Assistant data plane (assistant host)
 
-### Step 1: Review Changes
+- `POST /assistant/chat/{assistantName}`
+- `GET /assistant/files/{assistantName}`
+- `POST /assistant/files/{assistantName}`
+- `DELETE /assistant/files/{assistantName}/{fileId}`
 
-1. Check the [Pinecone API Changelog](https://docs.pinecone.io/reference/api/changelog)
-2. Note any breaking changes or new features
-3. Identify affected API clients and types
+## Version Upgrade Checklist
 
-### Step 2: Update Version Constant
+1. Update `API_VERSION` in `src/utils/constants.ts`.
+2. Reconcile `src/api/types.ts` with upstream schema changes.
+3. Reconcile API client paths and payloads (`src/api/*.ts`).
+4. Run:
+   - `npm run check-types`
+   - `npm run lint`
+   - `npm test`
+   - `npm run test:coverage`
+5. Run env-gated integration smoke tests:
+   - `PINECONE_API_KEY=... PINECONE_INTEGRATION_TESTS=true npm run test:integration`
+6. Update docs (`docs/api-reference.md`, `docs/testing.md`, `README.md`).
 
-Update `src/utils/constants.ts`:
+## Regression Requirements
 
-```typescript
-export const API_VERSION = '2025-XX';  // New version
-```
+Any API-path or auth behavior change must include at least one failing-before/passing-after test for:
 
-### Step 3: Update Type Definitions
-
-Review and update `src/api/types.ts` to match the new API schema:
-
-1. Check for new fields added to existing types
-2. Check for removed or renamed fields
-3. Check for new enum values
-4. Add types for new endpoints
-
-### Step 4: Update API Clients
-
-Update API client methods in:
-- `src/api/controlPlane.ts`
-- `src/api/dataPlane.ts`
-- `src/api/assistantApi.ts`
-- `src/api/namespaceApi.ts`
-- `src/api/adminApi.ts`
-
-### Step 5: Update Tests
-
-1. Update test fixtures in `test-fixtures/`
-2. Update mock responses in test files
-3. Run the full test suite
-4. Add tests for new features
-
-### Step 6: Update Documentation
-
-1. Update this file with the new version
-2. Update `README.md` if user-facing features changed
-3. Update `docs/api-reference.md` with new endpoints
-
-## API Reference by Category
-
-### Control Plane API
-
-Base URL: `https://api.pinecone.io`
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/indexes` | GET | List all indexes |
-| `/indexes` | POST | Create an index |
-| `/indexes/{name}` | GET | Describe an index |
-| `/indexes/{name}` | PATCH | Configure an index |
-| `/indexes/{name}` | DELETE | Delete an index |
-| `/indexes/{name}/backups` | GET | List index backups |
-| `/indexes/{name}/backups` | POST | Create a backup |
-| `/backups/{backupId}` | GET | Describe a backup |
-| `/backups/{backupId}` | DELETE | Delete a backup |
-| `/indexes/create-from-backup` | POST | Restore from backup |
-| `/restore-jobs` | GET | List restore jobs |
-| `/restore-jobs/{jobId}` | GET | Describe restore job |
-
-### Data Plane API
-
-Base URL: `https://{index-host}`
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/query` | POST | Query vectors (BYO vectors) |
-| `/records/search` | POST | Search records (integrated embeddings) |
-| `/namespaces` | GET | List namespaces |
-| `/namespaces/{namespace}` | GET | Describe namespace |
-| `/namespaces/{namespace}` | DELETE | Delete namespace |
-| `/describe_index_stats` | GET | Get index statistics |
-
-### Assistant API
-
-Base URL: `https://{assistant-host}`
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/chat/completions` | POST | Chat with assistant |
-| `/files` | GET | List files |
-| `/files` | POST | Upload file |
-| `/files/{fileId}` | DELETE | Delete file |
-
-### Admin API
-
-Base URL: `https://api.pinecone.io`
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/organizations` | GET | List organizations |
-| `/projects` | GET | List projects |
-| `/projects` | POST | Create project |
-| `/projects/{projectId}` | DELETE | Delete project |
-| `/projects/{projectId}/api-keys` | POST | Create API key |
-
-## Backward Compatibility
-
-The extension maintains backward compatibility through:
-
-1. **Optional fields**: New fields are typed as optional
-2. **Type guards**: Runtime checks for field existence
-3. **Fallbacks**: Sensible defaults when fields are missing
-
-Example:
-
-```typescript
-// Handle both old and new response format
-const status = index.status?.state || 'Unknown';
-const recordCount = backup.record_count ?? 0;
-```
-
-## Testing API Changes
-
-Before releasing an API version update:
-
-1. Run unit tests: `npm test`
-2. Run integration tests (with credentials):
-   ```bash
-   export PINECONE_API_KEY=your-key
-   export PINECONE_INTEGRATION_TESTS=true
-   npm test
-   ```
-3. Manual testing:
-   - Create/delete indexes
-   - Query with both vector and text
-   - Create/restore backups
-   - Chat with assistants
-   - Upload/delete files
-
-## Reporting API Issues
-
-If you encounter issues with the API:
-
-1. Check the current API version in the Output panel
-2. Compare with Pinecone's latest documented version
-3. Check if the issue is version-specific
-4. Report issues on [GitHub](https://github.com/pinecone-io/pinecone-vscode/issues)
-
-Include in your report:
-- Extension version
-- API version (from constants.ts)
-- Full error message
-- Steps to reproduce
+- host normalization (`host` vs `https://host`),
+- authentication failure classification,
+- refresh/UI update behavior when command-side mutations complete.

@@ -35,6 +35,7 @@ import { AssistantModel, IndexModel, BackupModel, Organization, Project } from '
 import { ProjectContext } from '../api/client';
 import { AUTH_CONTEXTS } from '../utils/constants';
 import { createComponentLogger } from '../utils/logger';
+import { classifyError } from '../utils/errorHandling';
 
 /** Logger for tree data provider operations */
 const log = createComponentLogger('TreeDataProvider');
@@ -57,6 +58,7 @@ const log = createComponentLogger('TreeDataProvider');
  */
 export class PineconeTreeDataProvider implements vscode.TreeDataProvider<PineconeTreeItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<PineconeTreeItem | undefined | null | void>();
+    private readonly staleRecoveryRefreshes = new Set<string>();
     
     /** Event fired when tree data changes and needs refresh */
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -90,6 +92,22 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
     }
 
     /**
+     * Schedules a one-time recovery refresh for stale tree item metadata.
+     *
+     * Stale IDs can occur when VSCode reuses expanded-state item identities across
+     * context changes. We refresh once per stale key to recover without triggering
+     * an endless refresh loop.
+     */
+    private scheduleStaleMetadataRecovery(staleKey: string): void {
+        if (this.staleRecoveryRefreshes.has(staleKey)) {
+            return;
+        }
+
+        this.staleRecoveryRefreshes.add(staleKey);
+        setTimeout(() => this.refresh(), 100);
+    }
+
+    /**
      * Gets the tree item representation of an element.
      * 
      * @param element - The tree item to get
@@ -97,24 +115,6 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
      */
     getTreeItem(element: PineconeTreeItem): vscode.TreeItem {
         return element;
-    }
-
-    /**
-     * Checks if an error is authentication-related.
-     * 
-     * @param error - The error to check
-     * @returns true if the error indicates an authentication problem
-     */
-    private isAuthError(error: unknown): boolean {
-        const message = String(error instanceof Error ? error.message : error).toLowerCase();
-        return message.includes('unauthorized') ||
-               message.includes('401') ||
-               message.includes('403') ||
-               message.includes('not authenticated') ||
-               message.includes('token expired') ||
-               message.includes('invalid api key') ||
-               message.includes('authentication failed') ||
-               message.includes('x-project-id');
     }
 
     /**
@@ -127,7 +127,7 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
      * 1. **Authentication Errors** (401, 403, token expired):
      *    - Show warning message (yellow, less alarming)
      *    - Offer "Login" action button for quick recovery
-     *    - Detected via isAuthError() pattern matching
+     *    - Detected via shared classifyError() logic
      * 
      * 2. **Other API Errors** (404, 500, network issues):
      *    - Show error message (red)
@@ -144,12 +144,12 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
      * @param operation - Description of the failed operation
      */
     private handleApiError(error: unknown, operation: string): void {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const classified = classifyError(error);
         
-        if (this.isAuthError(error)) {
+        if (classified.requiresLogin) {
             // Tier 1: Auth errors - offer quick recovery action
             vscode.window.showWarningMessage(
-                `Authentication error: ${errorMessage}`,
+                `Authentication error: ${classified.userMessage}`,
                 'Login'
             ).then(selection => {
                 if (selection === 'Login') {
@@ -158,7 +158,7 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
             });
         } else {
             // Tier 2: Other errors - inform user without action
-            vscode.window.showErrorMessage(`Failed to ${operation}: ${errorMessage}`);
+            vscode.window.showErrorMessage(`Failed to ${operation}: ${classified.userMessage}`);
         }
     }
 
@@ -347,6 +347,15 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
         // ─────────────────────────────────────────────────────────────────────
         if (org && !element.metadata?.isEmpty) {
             this.pineconeService.setTargetOrganization({ id: org.id, name: org.name });
+
+            // OAuth tokens are organization-scoped. Switch token scope before
+            // listing projects so non-default organizations populate correctly.
+            if (this.authService.getAuthContext() === AUTH_CONTEXTS.USER_TOKEN) {
+                const switched = await this.authService.switchOrganization(org.id);
+                if (!switched) {
+                    log.warn(`Could not switch auth scope to organization "${org.id}". Project list may be empty for this org.`);
+                }
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -611,9 +620,8 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
         // Validate that metadata matches the expected index
         // This prevents using the wrong host if VSCode passes a stale/wrong element
         if (index.name !== indexName) {
-            log.warn(`Metadata mismatch: expected index "${indexName}" but got "${index.name}". Triggering refresh.`);
-            // Trigger a refresh to fix the stale tree state
-            setTimeout(() => vscode.commands.executeCommand('pinecone.refresh'), 100);
+            log.warn(`Metadata mismatch: expected index "${indexName}" but got "${index.name}". Scheduling one-time recovery refresh.`);
+            this.scheduleStaleMetadataRecovery(`namespace:${compositeParentId ?? 'none'}:${indexName}`);
             return [];
         }
 
@@ -695,9 +703,8 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
         // Validate that metadata matches the expected index
         // This prevents using wrong data if VSCode passes a stale/wrong element
         if (index.name !== indexName) {
-            log.warn(`Metadata mismatch: expected index "${indexName}" but got "${index.name}". Triggering refresh.`);
-            // Trigger a refresh to fix the stale tree state
-            setTimeout(() => vscode.commands.executeCommand('pinecone.refresh'), 100);
+            log.warn(`Metadata mismatch: expected index "${indexName}" but got "${index.name}". Scheduling one-time recovery refresh.`);
+            this.scheduleStaleMetadataRecovery(`backup:${compositeParentId ?? 'none'}:${indexName}`);
             return [];
         }
 
@@ -917,9 +924,8 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
         // Validate that metadata matches the expected assistant
         // This prevents using the wrong host if VSCode passes a stale/wrong element
         if (assistant.name !== assistantName) {
-            log.warn(`Metadata mismatch: expected assistant "${assistantName}" but got "${assistant.name}". Triggering refresh.`);
-            // Trigger a refresh to fix the stale tree state
-            setTimeout(() => vscode.commands.executeCommand('pinecone.refresh'), 100);
+            log.warn(`Metadata mismatch: expected assistant "${assistantName}" but got "${assistant.name}". Scheduling one-time recovery refresh.`);
+            this.scheduleStaleMetadataRecovery(`files:${compositeParentId ?? 'none'}:${assistantName}`);
             return [];
         }
 

@@ -14,7 +14,7 @@
   ],
   "rules": {
     "@typescript-eslint/naming-convention": [
-      "warn",
+      "error",
       {
         "selector": "import",
         "format": ["camelCase", "PascalCase"]
@@ -22,11 +22,11 @@
     ],
     "@typescript-eslint/semi": "warn",
     "curly": "warn",
-    "eqeqeq": "warn",
+    "eqeqeq": "error",
     "no-throw-literal": "warn",
     "semi": "off",
     "@typescript-eslint/no-explicit-any": "warn",
-    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
   },
   "ignorePatterns": [
     "out",

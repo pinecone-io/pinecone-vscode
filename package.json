@@ -421,7 +421,10 @@
     "lint": "eslint src --ext ts",
     "lint:fix": "eslint src --ext ts --fix",
     "test": "vscode-test",
-    "test:coverage": "vscode-test --coverage"
+    "test:coverage": "rm -rf .coverage .nyc_output coverage && NODE_V8_COVERAGE=.coverage vscode-test --coverage && npm run coverage:check",
+    "test:integration": "npm run compile:tsc && vscode-test --config .vscode-test.integration.mjs",
+    "coverage:check": "node scripts/check-coverage-output.js",
+    "clean:artifacts": "find . -name .DS_Store -type f -delete && rm -rf .vscode-test"
   },
   "devDependencies": {
     "@types/form-data": "^2.2.1",

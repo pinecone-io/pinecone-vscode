@@ -277,6 +277,12 @@ export const EXTENSION_ID = 'pinecone.pinecone-vscode';
  */
 export const OAUTH_CALLBACK_PORT = 59049;
 
+/**
+ * Maximum time to wait for OAuth callback completion.
+ * If the browser flow is not completed within this window, login is aborted.
+ */
+export const OAUTH_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+
 // ============================================================================
 // Polling Configuration
 // ============================================================================

@@ -16,6 +16,7 @@ import { PineconeTreeItem } from '../providers/treeItems';
 import { AuthService } from '../services/authService';
 import { AUTH_CONTEXTS } from '../utils/constants';
 import { getErrorMessage } from '../utils/errorHandling';
+import { refreshExplorer } from '../utils/refreshExplorer';
 // Project interface available if needed for future expansion
 
 /**
@@ -177,7 +178,7 @@ export class ProjectCommands {
             });
 
             vscode.window.showInformationMessage(`Project "${name}" created successfully`);
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({ delayMs: 0, focusExplorer: false });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to create project: ${message}`);
@@ -237,7 +238,7 @@ export class ProjectCommands {
             });
 
             vscode.window.showInformationMessage(`Project "${projectName}" deleted successfully`);
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({ delayMs: 0, focusExplorer: false });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to delete project: ${message}`);

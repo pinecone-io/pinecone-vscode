@@ -12,8 +12,8 @@ import { PineconeTreeItem } from '../providers/treeItems';
 import { PineconeTreeDataProvider } from '../providers/pineconeTreeDataProvider';
 import { AssistantModel, Organization, Project } from '../api/types';
 import { ProjectContext } from '../api/client';
-import { POLLING_CONFIG } from '../utils/constants';
 import { getErrorMessage } from '../utils/errorHandling';
+import { refreshExplorer } from '../utils/refreshExplorer';
 
 /**
  * Handles all file-related commands for Pinecone Assistants.
@@ -128,8 +128,12 @@ export class FileCommands {
                     `Successfully uploaded ${completed} file(s). Processing may take a few minutes.`
                 );
             }
-            
-            vscode.commands.executeCommand('pinecone.refresh');
+
+            void refreshExplorer({
+                treeDataProvider: this.treeDataProvider,
+                delayMs: 0,
+                focusExplorer: false
+            });
         });
     }
 
@@ -186,19 +190,8 @@ export class FileCommands {
                     );
                 });
                 vscode.window.showInformationMessage(`File "${fileName}" deleted successfully`);
-                
-                // Refresh after successful deletion using triple-refresh approach
-                // This ensures the tree view updates reliably in Cursor IDE
-                setTimeout(async () => {
-                    // Approach 1: Direct call to treeDataProvider
-                    this.treeDataProvider.refresh();
-                    
-                    // Approach 2: Execute refresh command
-                    await vscode.commands.executeCommand('pinecone.refresh');
-                    
-                    // Approach 3: Focus on the explorer to force UI update
-                    await vscode.commands.executeCommand('pineconeExplorer.focus');
-                }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+                void refreshExplorer({ treeDataProvider: this.treeDataProvider });
             } catch (e: unknown) {
                 const message = getErrorMessage(e);
                 vscode.window.showErrorMessage(`Failed to delete file: ${message}`);

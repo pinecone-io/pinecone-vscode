@@ -13,7 +13,7 @@ import { ChatMessage, StreamController } from '../api/assistantApi';
 import { StreamChunk, Citation } from '../api/types';
 import { ProjectContext } from '../api/client';
 import { ASSISTANT_MODELS, AssistantModelConfig } from '../utils/constants';
-import { getErrorMessage } from '../utils/errorHandling';
+import { classifyError } from '../utils/errorHandling';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -59,6 +59,8 @@ export class ChatPanel {
     private _streamingContent: string = '';
     /** Buffer for accumulated streaming citations */
     private _streamingCitations: Citation[] = [];
+    /** Prevents duplicate stream finalization when both message_end and socket end fire */
+    private _streamFinalized: boolean = false;
 
     /**
      * Creates or reveals the chat panel.
@@ -259,15 +261,15 @@ export class ChatPanel {
             this._panel.webview.postMessage({ command: 'receiveMessage', response });
 
         } catch (e: unknown) {
-            const message = getErrorMessage(e);
+            const classified = classifyError(e);
             
             // Check if this is an authentication error
-            if (this.isAuthError(message)) {
+            if (classified.requiresLogin) {
                 // Remove the failed user message from history
                 this._messages.pop();
                 this._panel.webview.postMessage({ command: 'authExpired' });
             } else {
-                this._panel.webview.postMessage({ command: 'error', message });
+                this._panel.webview.postMessage({ command: 'error', message: classified.userMessage });
             }
         }
     }
@@ -285,6 +287,7 @@ export class ChatPanel {
         // Reset streaming buffers
         this._streamingContent = '';
         this._streamingCitations = [];
+        this._streamFinalized = false;
 
         // Notify webview that streaming has started
         this._panel.webview.postMessage({ command: 'streamStart' });
@@ -314,9 +317,13 @@ export class ChatPanel {
             );
 
         } catch (e: unknown) {
-            const message = getErrorMessage(e);
+            const classified = classifyError(e);
             this._messages.pop(); // Remove failed user message
-            this._panel.webview.postMessage({ command: 'error', message });
+            if (classified.requiresLogin) {
+                this._panel.webview.postMessage({ command: 'authExpired' });
+            } else {
+                this._panel.webview.postMessage({ command: 'error', message: classified.userMessage });
+            }
         }
     }
 
@@ -349,6 +356,9 @@ export class ChatPanel {
                     command: 'streamUsage', 
                     usage: chunk.usage 
                 });
+                // Some SSE implementations keep the socket open after message_end.
+                // Finalize on message_end so the UI is not stuck waiting for socket close.
+                this.handleStreamComplete();
                 break;
         }
     }
@@ -357,17 +367,22 @@ export class ChatPanel {
      * Handles streaming errors.
      */
     private handleStreamError(error: Error): void {
-        const message = error.message;
+        if (this._streamFinalized) {
+            return;
+        }
+
+        this._streamFinalized = true;
+        const classified = classifyError(error);
         
         // Clean up state
         this._streamController = null;
         
         // Check if this is an authentication error
-        if (this.isAuthError(message)) {
+        if (classified.requiresLogin) {
             this._messages.pop(); // Remove failed user message
             this._panel.webview.postMessage({ command: 'authExpired' });
         } else {
-            this._panel.webview.postMessage({ command: 'streamError', message });
+            this._panel.webview.postMessage({ command: 'streamError', message: classified.userMessage });
         }
     }
 
@@ -375,6 +390,11 @@ export class ChatPanel {
      * Handles streaming completion.
      */
     private handleStreamComplete(): void {
+        if (this._streamFinalized) {
+            return;
+        }
+        this._streamFinalized = true;
+
         // Add accumulated content to message history
         if (this._streamingContent) {
             this._messages.push({ role: 'assistant', content: this._streamingContent });
@@ -397,6 +417,7 @@ export class ChatPanel {
      */
     private abortStream(): void {
         if (this._streamController) {
+            this._streamFinalized = true;
             this._streamController.abort();
             this._streamController = null;
             
@@ -418,17 +439,5 @@ export class ChatPanel {
             this._streamingContent = '';
             this._streamingCitations = [];
         }
-    }
-
-    /**
-     * Checks if an error message indicates an authentication problem.
-     */
-    private isAuthError(message: string): boolean {
-        const lowerMessage = message.toLowerCase();
-        return lowerMessage.includes('401') ||
-               lowerMessage.includes('unauthorized') ||
-               lowerMessage.includes('token expired') ||
-               lowerMessage.includes('authentication failed') ||
-               lowerMessage.includes('not authenticated');
     }
 }

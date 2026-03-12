@@ -17,8 +17,9 @@ import * as crypto from 'crypto';
 import fetch from 'node-fetch';
 import { ConfigService } from './configService';
 import { AdminApiClient } from '../api/adminApi';
-import { OAUTH_CONFIG, AUTH_CONTEXTS, AuthContextValue, OAUTH_CALLBACK_PORT } from '../utils/constants';
+import { OAUTH_CONFIG, AUTH_CONTEXTS, AuthContextValue, OAUTH_CALLBACK_PORT, OAUTH_LOGIN_TIMEOUT_MS } from '../utils/constants';
 import { createComponentLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errorHandling';
 
 /** Logger for AuthService operations */
 const log = createComponentLogger('AuthService');
@@ -195,49 +196,10 @@ export class AuthService {
      * 
      * @throws {Error} When the callback server cannot start
      */
-    async login(): Promise<void> {
+    async login(timeoutMs: number = OAUTH_LOGIN_TIMEOUT_MS, organizationId?: string): Promise<void> {
         const state = crypto.randomBytes(16).toString('hex');
         const codeVerifier = crypto.randomBytes(32).toString('base64url');
         const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
-
-        const server = http.createServer(async (req, res) => {
-            const url = new URL(req.url!, `http://${req.headers.host}`);
-            if (url.pathname === '/auth-callback') {
-                const code = url.searchParams.get('code');
-                const returnedState = url.searchParams.get('state');
-
-                if (returnedState !== state) {
-                    res.writeHead(400);
-                    res.end('Invalid state parameter');
-                    return;
-                }
-
-                if (code) {
-                    try {
-                        const token = await this.exchangeCodeForToken(code, codeVerifier);
-                        this.saveOAuthToken(token);
-                        this.setAuthContextState(AUTH_CONTEXTS.USER_TOKEN);
-                        
-                        res.writeHead(200, { 'Content-Type': 'text/html' });
-                        res.end('<h1>Login Successful</h1><p>You can close this window and return to VSCode.</p>');
-                        
-                        await this.updateAuthContext();
-                        this._onDidChangeAuth.fire();
-                        vscode.window.showInformationMessage('Successfully logged in to Pinecone!');
-                    } catch (error: unknown) {
-                        res.writeHead(500);
-                        res.end('Authentication failed');
-                        vscode.window.showErrorMessage(`Authentication failed: ${error}`);
-                    } finally {
-                        server.close();
-                    }
-                }
-            }
-        });
-
-        // Start local server on the OAuth callback port to receive the auth code
-        server.listen(OAUTH_CALLBACK_PORT);
-
         const authUrl = new URL(OAUTH_CONFIG.authUrl);
         authUrl.searchParams.append('response_type', 'code');
         authUrl.searchParams.append('client_id', OAUTH_CONFIG.clientId);
@@ -247,8 +209,207 @@ export class AuthService {
         authUrl.searchParams.append('code_challenge', codeChallenge);
         authUrl.searchParams.append('code_challenge_method', 'S256');
         authUrl.searchParams.append('audience', OAUTH_CONFIG.audience);
+        if (organizationId) {
+            authUrl.searchParams.append('orgId', organizationId);
+        }
 
-        vscode.env.openExternal(vscode.Uri.parse(authUrl.toString()));
+        await new Promise<void>((resolve, reject) => {
+            let timeoutId: NodeJS.Timeout | undefined;
+            let settled = false;
+
+            const server = http.createServer((req, res) => {
+                void (async () => {
+                    if (!req.url || !req.headers.host) {
+                        res.writeHead(400);
+                        res.end('Invalid callback request');
+                        await settleReject(new Error('Invalid OAuth callback request.'));
+                        return;
+                    }
+
+                    const url = new URL(req.url, `http://${req.headers.host}`);
+                    if (url.pathname !== '/auth-callback') {
+                        res.writeHead(404);
+                        res.end('Not found');
+                        return;
+                    }
+
+                    const code = url.searchParams.get('code');
+                    const returnedState = url.searchParams.get('state');
+
+                    if (returnedState !== state) {
+                        res.writeHead(400);
+                        res.end('Invalid state parameter');
+                        await settleReject(new Error('Invalid state parameter received from OAuth callback.'));
+                        return;
+                    }
+
+                    if (!code) {
+                        res.writeHead(400);
+                        res.end('Missing authorization code');
+                        await settleReject(new Error('OAuth callback did not include an authorization code.'));
+                        return;
+                    }
+
+                    try {
+                        const token = await this.exchangeCodeForToken(code, codeVerifier);
+                        this.saveOAuthToken(token);
+                        this.setAuthContextState(AUTH_CONTEXTS.USER_TOKEN);
+
+                        res.writeHead(200, { 'Content-Type': 'text/html' });
+                        res.end('<h1>Login Successful</h1><p>You can close this window and return to VSCode.</p>');
+
+                        await this.updateAuthContext();
+                        this._onDidChangeAuth.fire();
+                        vscode.window.showInformationMessage('Successfully logged in to Pinecone!');
+                        await settleResolve();
+                    } catch (error: unknown) {
+                        res.writeHead(500);
+                        res.end('Authentication failed');
+                        await settleReject(new Error(`Authentication failed: ${getErrorMessage(error)}`));
+                    }
+                })();
+            });
+
+            const settleResolve = async (): Promise<void> => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+                await this.closeServer(server);
+                resolve();
+            };
+
+            const settleReject = async (error: Error): Promise<void> => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+                await this.closeServer(server);
+                reject(error);
+            };
+
+            server.on('error', (error: NodeJS.ErrnoException) => {
+                if (error.code === 'EADDRINUSE') {
+                    void settleReject(
+                        new Error(
+                            `OAuth callback port ${OAUTH_CALLBACK_PORT} is already in use (EADDRINUSE).`
+                        )
+                    );
+                    return;
+                }
+                void settleReject(error);
+            });
+
+            server.listen(OAUTH_CALLBACK_PORT, () => {
+                timeoutId = setTimeout(() => {
+                    void settleReject(
+                        new Error(
+                            `Login timed out after ${Math.floor(timeoutMs / 1000)} seconds.`
+                        )
+                    );
+                }, timeoutMs);
+
+                void (async () => {
+                    try {
+                        const opened = await vscode.env.openExternal(vscode.Uri.parse(authUrl.toString()));
+                        if (!opened) {
+                            await settleReject(new Error('Could not open browser for OAuth login.'));
+                        }
+                    } catch (error: unknown) {
+                        await settleReject(
+                            new Error(`Could not open browser for OAuth login: ${getErrorMessage(error)}`)
+                        );
+                    }
+                })();
+            });
+        });
+    }
+
+    /**
+     * Attempts to switch OAuth organization scope using refresh token exchange.
+     *
+     * Returns true only when the refreshed token is scoped to the requested org.
+     */
+    async switchOrganization(organizationId: string): Promise<boolean> {
+        if (!organizationId || this.getAuthContext() !== AUTH_CONTEXTS.USER_TOKEN) {
+            return false;
+        }
+
+        const secrets = this.configService.getSecrets();
+        const currentToken = secrets.oauth2_token;
+        if (!currentToken?.refresh_token) {
+            return false;
+        }
+
+        const currentOrgId = this.getTokenOrganizationId(currentToken.access_token);
+        if (currentOrgId === organizationId) {
+            return true;
+        }
+
+        try {
+            const refreshed = await this.refreshToken(currentToken.refresh_token, organizationId);
+            this.saveOAuthToken(refreshed);
+
+            const refreshedOrgId = this.getTokenOrganizationId(refreshed.access_token);
+            if (refreshedOrgId !== organizationId) {
+                log.warn(`Requested org scope "${organizationId}" but received token for "${refreshedOrgId || 'unknown'}".`);
+                return false;
+            }
+
+            // Do not fire auth-change refresh events when only org scope changes.
+            // Auth context and authenticated state remain unchanged, and emitting
+            // this event can create tree refresh loops when multiple orgs are expanded.
+            return true;
+        } catch (error: unknown) {
+            log.warn(`Failed to switch OAuth organization to "${organizationId}":`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Extracts the organization ID claim from an access token.
+     */
+    private getTokenOrganizationId(accessToken: string | undefined): string | undefined {
+        if (!accessToken) {
+            return undefined;
+        }
+
+        try {
+            const parts = accessToken.split('.');
+            if (parts.length < 2) {
+                return undefined;
+            }
+
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as Record<string, unknown>;
+            const orgId =
+                payload['https://pinecone.io/orgId'] ??
+                payload.orgId ??
+                payload.organization_id;
+
+            return typeof orgId === 'string' ? orgId : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Closes the OAuth callback server and waits for completion.
+     */
+    private async closeServer(server: http.Server): Promise<void> {
+        await new Promise<void>((resolve) => {
+            if (!server.listening) {
+                resolve();
+                return;
+            }
+            server.close(() => resolve());
+        });
+        server.removeAllListeners();
     }
 
     private async exchangeCodeForToken(code: string, codeVerifier: string): Promise<OAuth2Token> {
@@ -389,15 +550,20 @@ export class AuthService {
      * @returns New OAuth2 token with updated access and refresh tokens
      * @throws {Error} When refresh fails
      */
-    private async refreshToken(refreshToken: string): Promise<OAuth2Token> {
+    private async refreshToken(refreshToken: string, organizationId?: string): Promise<OAuth2Token> {
+        const body = new URLSearchParams();
+        body.set('grant_type', 'refresh_token');
+        body.set('client_id', OAUTH_CONFIG.clientId);
+        body.set('refresh_token', refreshToken);
+        body.set('audience', OAUTH_CONFIG.audience);
+        if (organizationId) {
+            body.set('orgId', organizationId);
+        }
+
         const response = await fetch(OAUTH_CONFIG.tokenUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                grant_type: 'refresh_token',
-                client_id: OAUTH_CONFIG.clientId,
-                refresh_token: refreshToken
-            })
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
         });
 
         if (!response.ok) {
