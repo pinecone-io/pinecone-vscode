@@ -445,9 +445,10 @@ export class MockAssistantApi extends MockBase {
         assistantName: string, 
         filePath: string,
         metadata?: Record<string, unknown>,
+        multimodal?: boolean,
         projectContext?: ProjectContext
     ): Promise<FileModel> {
-        this.recordCall('uploadFile', host, assistantName, filePath, metadata, projectContext);
+        this.recordCall('uploadFile', host, assistantName, filePath, metadata, multimodal, projectContext);
         this.maybeThrow();
         return this.uploadFileResult || {
             id: `file-${Date.now()}`,

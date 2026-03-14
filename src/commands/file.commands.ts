@@ -83,8 +83,8 @@ export class FileCommands {
         if (!metadataSelections) {
             return;
         }
-        const metadataByFilePath = new Map<string, Record<string, unknown> | undefined>(
-            metadataSelections.map((entry: UploadFileMetadata) => [entry.filePath, entry.metadata])
+        const uploadOptionsByFilePath = new Map<string, UploadFileMetadata>(
+            metadataSelections.map((entry: UploadFileMetadata) => [entry.filePath, entry])
         );
 
         // Upload files with progress
@@ -112,7 +112,8 @@ export class FileCommands {
                         host, 
                         assistantName, 
                         uri.fsPath,
-                        metadataByFilePath.get(uri.fsPath),
+                        uploadOptionsByFilePath.get(uri.fsPath)?.metadata,
+                        uploadOptionsByFilePath.get(uri.fsPath)?.multimodal,
                         projectContext
                     );
                     completed++;

@@ -7,24 +7,31 @@ interface UploadMetadataMessage {
     command: 'submit' | 'cancel';
     payload?: {
         batchMetadata?: string;
+        batchMultimodal?: boolean;
+        multimodal?: boolean;
         files?: Array<{
             filePath: string;
             metadata?: string;
+            multimodal?: boolean;
         }>;
     };
 }
 
 export interface UploadMetadataPayload {
     batchMetadata?: string;
+    batchMultimodal?: boolean;
+    multimodal?: boolean;
     files?: Array<{
         filePath: string;
         metadata?: string;
+        multimodal?: boolean;
     }>;
 }
 
 export interface UploadFileMetadata {
     filePath: string;
     metadata?: Record<string, unknown>;
+    multimodal: boolean;
 }
 
 export function resolveUploadMetadataPayload(payload: UploadMetadataPayload): {
@@ -33,6 +40,7 @@ export function resolveUploadMetadataPayload(payload: UploadMetadataPayload): {
 } {
     const filesPayload = Array.isArray(payload.files) ? payload.files : [];
     const batchInput = String(payload.batchMetadata || '');
+    const hasBatchMultimodal = payload.batchMultimodal === true || payload.multimodal === true;
     const batchMetadata = parseOptionalJsonObject(
         batchInput,
         'Batch metadata must be a valid JSON object.'
@@ -52,7 +60,8 @@ export function resolveUploadMetadataPayload(payload: UploadMetadataPayload): {
         if (hasBatchMetadata) {
             result.push({
                 filePath,
-                metadata: batchMetadata.value
+                metadata: batchMetadata.value,
+                multimodal: hasBatchMultimodal
             });
             continue;
         }
@@ -67,7 +76,8 @@ export function resolveUploadMetadataPayload(payload: UploadMetadataPayload): {
 
         result.push({
             filePath,
-            metadata: perFileMetadata.value
+            metadata: perFileMetadata.value,
+            multimodal: hasBatchMultimodal || file.multimodal === true
         });
     }
 

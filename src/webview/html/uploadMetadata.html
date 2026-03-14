@@ -18,6 +18,11 @@
             <label for="batch-metadata">List-Level Metadata (JSON, optional)</label>
             <textarea id="batch-metadata" rows="3" placeholder='{"source":"knowledge-base","team":"support"}'></textarea>
             <p class="hint">When this field is not empty, it applies to all files and disables per-file metadata fields.</p>
+            <label for="batch-multimodal-toggle">
+                <input type="checkbox" id="batch-multimodal-toggle" />
+                List-level multimodal: apply to all files
+            </label>
+            <p class="hint">When checked, all files are uploaded as multimodal and per-file multimodal checkboxes are disabled.</p>
         </section>
 
         <section class="card">
