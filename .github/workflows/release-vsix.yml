@@ -32,8 +32,19 @@ jobs:
       - name: Build VSIX
         run: npx @vscode/vsce package
 
+      - name: Rename VSIX for release tag
+        id: rename
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          SOURCE_VSIX="$(ls -1 *.vsix | head -n 1)"
+          TARGET_VSIX="pinecone-vscode-${VERSION}.vsix"
+          mv "${SOURCE_VSIX}" "${TARGET_VSIX}"
+          echo "vsix_name=${TARGET_VSIX}" >> "$GITHUB_OUTPUT"
+
       - name: Attach VSIX to release
         uses: softprops/action-gh-release@v2
         with:
-          files: '*.vsix'
+          files: ${{ steps.rename.outputs.vsix_name }}
           overwrite_files: true
