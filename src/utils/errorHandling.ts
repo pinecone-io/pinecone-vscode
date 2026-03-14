@@ -40,6 +40,7 @@
 import * as vscode from 'vscode';
 import { PineconeApiError } from '../api/client';
 import { createComponentLogger } from './logger';
+import { refreshExplorer } from './refreshExplorer';
 
 /** Logger for error handling */
 const log = createComponentLogger('ErrorHandler');
@@ -227,8 +228,7 @@ export function isAuthenticationError(error: unknown): boolean {
            message.includes('authentication') ||
            message.includes('token expired') ||
            message.includes('invalid api key') ||
-           message.includes('not authenticated') ||
-           message.includes('x-project-id');
+           message.includes('not authenticated');
 }
 
 /**
@@ -380,7 +380,7 @@ function handleErrorAction(selection: string | undefined, onAction?: (action: st
             vscode.commands.executeCommand('pinecone.login');
             break;
         case 'Refresh':
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({ delayMs: 0, focusExplorer: false });
             break;
         case 'Retry':
             // Retry is handled by the caller via onAction

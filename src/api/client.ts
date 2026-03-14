@@ -70,7 +70,7 @@ export interface RequestOptions {
     /** Additional headers to include */
     headers?: Record<string, string>;
     /** Query parameters to append to the URL */
-    queryParams?: Record<string, string>;
+    queryParams?: Record<string, string | string[]>;
     /** Request timeout in milliseconds (default: 30000) */
     timeout?: number;
     /** 
@@ -269,37 +269,41 @@ export class PineconeClient {
         // shared state (this._projectContext/_projectId) to avoid race conditions in
         // concurrent operations like tree view refreshes.
         const authContext = this.authService.getAuthContext();
-        if (authContext === AUTH_CONTEXTS.USER_TOKEN || authContext === AUTH_CONTEXTS.SERVICE_ACCOUNT) {
-            // Determine which project context to use: per-request (preferred) or shared state
-            const effectiveProjectContext = options?.projectContext || this._projectContext;
-            const effectiveProjectId = options?.projectId || this._projectId;
-            
-            // For JWT auth with full project context, use managed API keys
-            // This is the preferred authentication method as it works reliably
-            // for both control plane and data plane operations
-            if (effectiveProjectContext) {
-                const managedKey = await this.authService.getOrCreateManagedKey(
-                    effectiveProjectContext.id,
-                    effectiveProjectContext.name,
-                    effectiveProjectContext.organizationId
-                );
-                headers['Api-Key'] = managedKey;
-                // Also include X-Project-Id for additional context
-                headers['X-Project-Id'] = effectiveProjectContext.id;
-                log.debug(`Using managed API key for project ${effectiveProjectContext.name}`);
-            } else {
-                // Fallback to Bearer token + X-Project-Id when full context is not available
-                // Note: This may not work for all operations (e.g., backups)
+        const isJwtAuth = authContext === AUTH_CONTEXTS.USER_TOKEN || authContext === AUTH_CONTEXTS.SERVICE_ACCOUNT;
+        const effectiveProjectContext = options?.projectContext || this._projectContext;
+        const effectiveProjectId = options?.projectId || this._projectId;
+
+        const applyAuthHeaders = async (): Promise<void> => {
+            delete headers['Authorization'];
+            delete headers['Api-Key'];
+            delete headers['X-Project-Id'];
+
+            if (isJwtAuth) {
+                if (effectiveProjectContext) {
+                    const managedKey = await this.authService.getOrCreateManagedKey(
+                        effectiveProjectContext.id,
+                        effectiveProjectContext.name,
+                        effectiveProjectContext.organizationId
+                    );
+                    headers['Api-Key'] = managedKey;
+                    headers['X-Project-Id'] = effectiveProjectContext.id;
+                    log.debug(`Using managed API key for project ${effectiveProjectContext.name}`);
+                    return;
+                }
+
                 headers['Authorization'] = `Bearer ${token}`;
                 if (effectiveProjectId) {
                     headers['X-Project-Id'] = effectiveProjectId;
                 }
                 log.debug('Using Bearer token auth (no project context set)');
+                return;
             }
-        } else {
+
             // API keys are already project-scoped, so no X-Project-Id needed
             headers['Api-Key'] = token;
-        }
+        };
+
+        await applyAuthHeaders();
 
         // Build full URL with optional query parameters
         // Use environment setting if no explicit host is provided
@@ -309,89 +313,118 @@ export class PineconeClient {
         
         let url = `${baseUrl}${path}`;
         if (options?.queryParams) {
-            const params = new URLSearchParams(options.queryParams);
+            const params = new URLSearchParams();
+            for (const [key, rawValue] of Object.entries(options.queryParams)) {
+                if (Array.isArray(rawValue)) {
+                    rawValue.forEach((value) => params.append(key, value));
+                } else {
+                    params.append(key, rawValue);
+                }
+            }
             url += `?${params.toString()}`;
         }
 
-        // Set up timeout with AbortController
-        const timeout = options?.timeout ?? DEFAULT_TIMEOUT_MS;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        try {
-            // Prepare request body
-            let requestBody: string | FormData | undefined;
-            if (options?.body) {
-                if (isFormData) {
-                    // FormData is passed through directly
-                    requestBody = options.body as FormData;
-                } else {
-                    // JSON objects are stringified
-                    requestBody = JSON.stringify(options.body);
-                }
+        // Prepare request body once (safe to reuse across retries for string/FormData)
+        let requestBody: string | FormData | undefined;
+        if (options?.body) {
+            if (isFormData) {
+                requestBody = options.body as FormData;
+            } else {
+                requestBody = JSON.stringify(options.body);
             }
-
-            const response = await this.fetchFn(url, {
-                method,
-                headers,
-                body: requestBody,
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                const text = await response.text();
-                throw new PineconeApiError(response.status, text);
-            }
-
-            // ─────────────────────────────────────────────────────────────────
-            // Response Body Handling with Error Recovery
-            // ─────────────────────────────────────────────────────────────────
-            // 
-            // Error Recovery Strategy:
-            // 1. 204 No Content → Return empty object (standard REST pattern)
-            // 2. Empty body with 200 → Return empty object (DELETE operations)
-            // 3. Invalid JSON → Log warning, return empty object
-            //
-            // Rationale: Many operations (DELETE, some POSTs) return empty bodies.
-            // Rather than throwing errors that disrupt the UI, we return an empty
-            // object and let the caller handle the absence of data gracefully.
-            // This provides resilience against API inconsistencies while still
-            // logging warnings for debugging.
-            // ─────────────────────────────────────────────────────────────────
-
-            // Case 1: Explicit 204 No Content - standard REST response for success with no body
-            if (response.status === 204) {
-                return {} as T;
-            }
-
-            // Case 2: Empty body check - some APIs return 200 with no body
-            const text = await response.text();
-            if (!text || text.trim() === '') {
-                return {} as T;
-            }
-
-            // Case 3: Parse JSON - with graceful fallback on parse errors
-            try {
-                return JSON.parse(text) as T;
-            } catch (parseError: unknown) {
-                // Error Recovery: Log for debugging but don't crash the UI
-                // This could indicate an API version mismatch or unexpected response format.
-                // The warning helps developers investigate without disrupting user experience.
-                log.warn(
-                    'Failed to parse JSON response (returning empty object):',
-                    parseError,
-                    'Response text preview:',
-                    text.substring(0, 200)
-                );
-                return {} as T;
-            }
-        } catch (error: unknown) {
-            clearTimeout(timeoutId);
-            if (error instanceof Error && error.name === 'AbortError') {
-                throw new PineconeApiError(408, `Request timeout after ${timeout}ms`);
-            }
-            throw error;
         }
+
+        const timeout = options?.timeout ?? DEFAULT_TIMEOUT_MS;
+        const canRetryManagedKey =
+            isJwtAuth &&
+            Boolean(effectiveProjectContext);
+        let didRetryManagedKey = false;
+
+        const maxAttempts = canRetryManagedKey ? 2 : 1;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+            try {
+                const response = await this.fetchFn(url, {
+                    method,
+                    headers,
+                    body: requestBody,
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    const isAuthFailure = response.status === 401 || response.status === 403;
+
+                    // If a managed key was deleted server-side (or otherwise invalid),
+                    // self-heal by clearing local cache and recreating once.
+                    if (canRetryManagedKey && isAuthFailure && !didRetryManagedKey && effectiveProjectContext) {
+                        didRetryManagedKey = true;
+                        log.warn(
+                            `Managed key auth failed (${response.status}) for project ${effectiveProjectContext.id}; ` +
+                            'clearing cached managed key and retrying once.'
+                        );
+                        await this.authService.deleteManagedKey(effectiveProjectContext.id, false);
+                        await applyAuthHeaders();
+                        continue;
+                    }
+
+                    throw new PineconeApiError(response.status, text);
+                }
+
+                // ─────────────────────────────────────────────────────────────────
+                // Response Body Handling with Error Recovery
+                // ─────────────────────────────────────────────────────────────────
+                // 
+                // Error Recovery Strategy:
+                // 1. 204 No Content → Return empty object (standard REST pattern)
+                // 2. Empty body with 200 → Return empty object (DELETE operations)
+                // 3. Invalid JSON → Log warning, return empty object
+                //
+                // Rationale: Many operations (DELETE, some POSTs) return empty bodies.
+                // Rather than throwing errors that disrupt the UI, we return an empty
+                // object and let the caller handle the absence of data gracefully.
+                // This provides resilience against API inconsistencies while still
+                // logging warnings for debugging.
+                // ─────────────────────────────────────────────────────────────────
+
+                // Case 1: Explicit 204 No Content - standard REST response for success with no body
+                if (response.status === 204) {
+                    return {} as T;
+                }
+
+                // Case 2: Empty body check - some APIs return 200 with no body
+                const text = await response.text();
+                if (!text || text.trim() === '') {
+                    return {} as T;
+                }
+
+                // Case 3: Parse JSON - with graceful fallback on parse errors
+                try {
+                    return JSON.parse(text) as T;
+                } catch (parseError: unknown) {
+                    // Error Recovery: Log for debugging but don't crash the UI
+                    // This could indicate an API version mismatch or unexpected response format.
+                    // The warning helps developers investigate without disrupting user experience.
+                    log.warn(
+                        'Failed to parse JSON response (returning empty object):',
+                        parseError,
+                        'Response text preview:',
+                        text.substring(0, 200)
+                    );
+                    return {} as T;
+                }
+            } catch (error: unknown) {
+                clearTimeout(timeoutId);
+                if (error instanceof Error && error.name === 'AbortError') {
+                    throw new PineconeApiError(408, `Request timeout after ${timeout}ms`);
+                }
+                throw error;
+            }
+        }
+
+        throw new PineconeApiError(500, 'Request failed after retry attempts');
     }
 }

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Create Index</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Create Index</h2>
+        </div>
+
+        <section class="card">
+            <div class="form-group">
+                <label for="index-name">Index Name</label>
+                <input id="index-name" type="text" placeholder="my-index">
+            </div>
+
+            <div class="form-group">
+                <label for="index-mode">Index Type</label>
+                <select id="index-mode">
+                    <option value="standard">Bring Your Own Vectors</option>
+                    <option value="integrated">Integrated Embeddings</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="card" id="standard-section">
+            <h3>Standard Index</h3>
+            <div class="form-group">
+                <label for="standard-vector-type">Vector Type</label>
+                <select id="standard-vector-type">
+                    <option value="dense">Dense</option>
+                    <option value="sparse">Sparse</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="standard-dimension-group">
+                <label for="standard-dimension">Dimension</label>
+                <input id="standard-dimension" type="number" min="1" max="20000" placeholder="1536">
+            </div>
+
+            <div class="form-group" id="standard-metric-group">
+                <label for="standard-metric">Metric</label>
+                <select id="standard-metric">
+                    <option value="cosine">cosine</option>
+                    <option value="dotproduct">dotproduct</option>
+                    <option value="euclidean">euclidean</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="standard-cloud">Cloud</label>
+                    <select id="standard-cloud"></select>
+                </div>
+                <div class="form-group">
+                    <label for="standard-region">Region</label>
+                    <select id="standard-region"></select>
+                </div>
+            </div>
+        </section>
+
+        <section class="card hidden" id="integrated-section">
+            <h3>Integrated Embeddings Index</h3>
+            <div class="form-group">
+                <label for="integrated-model">Embedding Model</label>
+                <select id="integrated-model"></select>
+            </div>
+
+            <div class="form-group" id="integrated-dimension-group">
+                <label for="integrated-dimension">Embedding Dimension</label>
+                <select id="integrated-dimension"></select>
+            </div>
+
+            <div class="form-group">
+                <label for="integrated-field-name">Text Field Name</label>
+                <input id="integrated-field-name" type="text" value="text" placeholder="text">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="integrated-cloud">Cloud</label>
+                    <select id="integrated-cloud"></select>
+                </div>
+                <div class="form-group">
+                    <label for="integrated-region">Region</label>
+                    <select id="integrated-region"></select>
+                </div>
+            </div>
+        </section>
+
+        <div id="error" class="error hidden"></div>
+
+        <div class="actions">
+            <button id="create-btn">Create Index</button>
+        </div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

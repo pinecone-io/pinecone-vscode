@@ -1,0 +1,126 @@
+body {
+    padding: 20px;
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-editor-background);
+    font-family: var(--vscode-font-family);
+}
+
+.container {
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+.header {
+    margin-bottom: 12px;
+}
+
+.header h2 {
+    margin: 0;
+}
+
+.card {
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.card h3 {
+    margin-top: 0;
+}
+
+.form-group {
+    margin-bottom: 10px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+input[type="text"],
+select {
+    width: 100%;
+    padding: 8px;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+.hint {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+    margin: 0 0 8px;
+}
+
+.tag-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.tag-row button {
+    width: auto;
+    padding: 8px 10px;
+}
+
+button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 8px 16px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+button.secondary {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+button.secondary:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.error {
+    color: var(--vscode-errorForeground);
+    background-color: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+
+.success {
+    color: var(--vscode-testing-iconPassed);
+    background-color: var(--vscode-inputValidation-infoBackground);
+    border: 1px solid var(--vscode-inputValidation-infoBorder);
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+
+.hidden {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .tag-row {
+        grid-template-columns: 1fr;
+    }
+}

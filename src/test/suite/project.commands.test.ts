@@ -21,6 +21,7 @@ class MockAdminApi {
     public lastCreateProjectCall: { token: string; params: CreateProjectParams } | null = null;
     public lastDeleteProjectCall: { token: string; projectId: string } | null = null;
     public lastDescribeProjectCall: { token: string; projectId: string } | null = null;
+    public lastUpdateProjectCall: { token: string; projectId: string; name: string } | null = null;
     
     public createProjectResult: Project = {
         id: 'proj-new',
@@ -65,6 +66,20 @@ class MockAdminApi {
             throw this.shouldThrowError;
         }
         this.lastDeleteProjectCall = { token: accessToken, projectId };
+    }
+
+    async updateProject(accessToken: string, projectId: string, params: { name: string }): Promise<Project> {
+        if (this.shouldThrowError) {
+            throw this.shouldThrowError;
+        }
+        this.lastUpdateProjectCall = { token: accessToken, projectId, name: params.name };
+        return {
+            id: projectId,
+            name: params.name,
+            organization_id: 'org-123',
+            force_encryption_with_cmek: false,
+            created_at: new Date().toISOString()
+        };
     }
 }
 
@@ -129,6 +144,22 @@ suite('Project Commands Behavioral Tests', () => {
             assert.ok(mockApi.lastDeleteProjectCall);
             assert.strictEqual(mockApi.lastDeleteProjectCall.token, 'mock-access-token');
             assert.strictEqual(mockApi.lastDeleteProjectCall.projectId, 'proj-to-delete');
+        });
+    });
+
+    suite('renameProject Command Logic', () => {
+
+        test('should call updateProject with name-only payload', async () => {
+            const mockApi = new MockAdminApi();
+            const token = await mockApi.getAccessToken('client-id', 'client-secret');
+
+            const updated = await mockApi.updateProject(token, 'proj-rename', { name: 'renamed-project' });
+
+            assert.ok(mockApi.lastUpdateProjectCall);
+            assert.strictEqual(mockApi.lastUpdateProjectCall.token, 'mock-access-token');
+            assert.strictEqual(mockApi.lastUpdateProjectCall.projectId, 'proj-rename');
+            assert.strictEqual(mockApi.lastUpdateProjectCall.name, 'renamed-project');
+            assert.strictEqual(updated.name, 'renamed-project');
         });
     });
 

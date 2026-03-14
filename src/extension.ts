@@ -17,6 +17,10 @@ import { AssistantCommands } from './commands/assistant.commands';
 import { FileCommands } from './commands/file.commands';
 import { NamespaceCommands } from './commands/namespace.commands';
 import { ProjectCommands } from './commands/project.commands';
+import { DataOpsCommands } from './commands/dataOps.commands';
+import { AssistantToolsCommands } from './commands/assistantTools.commands';
+import { ApiKeysCommands } from './commands/apiKeys.commands';
+import { InferenceCommands } from './commands/inference.commands';
 import { logger } from './utils/logger';
 import { buildProjectContextFromItem } from './utils/treeItemHelpers';
 
@@ -60,11 +64,15 @@ export function activate(context: vscode.ExtensionContext): void {
     // Initialize Command Handlers
     // Pass treeDataProvider to commands that need to refresh the tree after operations
     const authCommands = new AuthCommands(authService);
-    const indexCommands = new IndexCommands(pineconeService, treeDataProvider, treeView);
+    const indexCommands = new IndexCommands(pineconeService, treeDataProvider, treeView, context.extensionUri);
     const assistantCommands = new AssistantCommands(pineconeService, context.extensionUri, treeDataProvider);
-    const fileCommands = new FileCommands(pineconeService, treeDataProvider);
+    const fileCommands = new FileCommands(pineconeService, treeDataProvider, context.extensionUri);
     const namespaceCommands = new NamespaceCommands(pineconeService);
     const projectCommands = new ProjectCommands(pineconeService, authService);
+    const dataOpsCommands = new DataOpsCommands(pineconeService, context.extensionUri);
+    const assistantToolsCommands = new AssistantToolsCommands(pineconeService, context.extensionUri);
+    const apiKeysCommands = new ApiKeysCommands(pineconeService, authService, context.extensionUri);
+    const inferenceCommands = new InferenceCommands(pineconeService, context.extensionUri);
 
     // Register Commands
     context.subscriptions.push(
@@ -111,16 +119,21 @@ export function activate(context: vscode.ExtensionContext): void {
                     });
             }
         }),
+        vscode.commands.registerCommand('pinecone.openDataOps', (item) => dataOpsCommands.openDataOps(item)),
 
         // Assistant Commands
         // Pass tree item for project context
         vscode.commands.registerCommand('pinecone.createAssistant', (item) => assistantCommands.createAssistant(item)),
         vscode.commands.registerCommand('pinecone.deleteAssistant', (item) => assistantCommands.deleteAssistant(item)),
         vscode.commands.registerCommand('pinecone.chatWithAssistant', (item) => assistantCommands.chatWithAssistant(item)),
+        vscode.commands.registerCommand('pinecone.updateAssistant', (item) => assistantToolsCommands.openUpdateAssistant(item)),
+        vscode.commands.registerCommand('pinecone.retrieveAssistantContext', (item) => assistantToolsCommands.openRetrieveContext(item)),
+        vscode.commands.registerCommand('pinecone.evaluateAssistantAnswer', (item) => assistantToolsCommands.openEvaluateAnswer(item)),
 
         // File Commands
         vscode.commands.registerCommand('pinecone.uploadFiles', (item) => fileCommands.uploadFiles(item)),
         vscode.commands.registerCommand('pinecone.deleteFile', (item) => fileCommands.deleteFile(item)),
+        vscode.commands.registerCommand('pinecone.viewFileDetails', (item) => fileCommands.viewFileDetails(item)),
 
         // Namespace Commands
         vscode.commands.registerCommand('pinecone.createNamespace', (item) => namespaceCommands.createNamespace(item)),
@@ -130,7 +143,12 @@ export function activate(context: vscode.ExtensionContext): void {
         // Project Commands
         // Pass tree item for organization context
         vscode.commands.registerCommand('pinecone.createProject', (item) => projectCommands.createProject(item)),
-        vscode.commands.registerCommand('pinecone.deleteProject', (item) => projectCommands.deleteProject(item))
+        vscode.commands.registerCommand('pinecone.deleteProject', (item) => projectCommands.deleteProject(item)),
+        vscode.commands.registerCommand('pinecone.renameProject', (item) => projectCommands.renameProject(item)),
+
+        // Admin + Inference commands
+        vscode.commands.registerCommand('pinecone.manageApiKeys', (item) => apiKeysCommands.openApiKeys(item)),
+        vscode.commands.registerCommand('pinecone.openInferenceToolbox', () => inferenceCommands.openInferencePanel())
     );
 
     logger.info('Extension activated');

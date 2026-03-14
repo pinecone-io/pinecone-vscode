@@ -31,6 +31,11 @@ suite('Index Commands Test Suite', () => {
         assert.ok(commands.includes('pinecone.queryIndex'));
     });
 
+    test('openDataOps command should be executable', async () => {
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('pinecone.openDataOps'));
+    });
+
     test('indexStats command should be executable', async () => {
         const commands = await vscode.commands.getCommands(true);
         assert.ok(commands.includes('pinecone.indexStats'));
@@ -68,6 +73,21 @@ suite('Assistant Commands Test Suite', () => {
         const commands = await vscode.commands.getCommands(true);
         assert.ok(commands.includes('pinecone.chatWithAssistant'));
     });
+
+    test('updateAssistant command should be executable', async () => {
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('pinecone.updateAssistant'));
+    });
+
+    test('retrieveAssistantContext command should be executable', async () => {
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('pinecone.retrieveAssistantContext'));
+    });
+
+    test('evaluateAssistantAnswer command should be executable', async () => {
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('pinecone.evaluateAssistantAnswer'));
+    });
 });
 
 suite('File Commands Test Suite', () => {
@@ -80,6 +100,11 @@ suite('File Commands Test Suite', () => {
     test('deleteFile command should be executable', async () => {
         const commands = await vscode.commands.getCommands(true);
         assert.ok(commands.includes('pinecone.deleteFile'));
+    });
+
+    test('viewFileDetails command should be executable', async () => {
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('pinecone.viewFileDetails'));
     });
 });
 
@@ -106,6 +131,16 @@ suite('Utility Commands Test Suite', () => {
     test('openDocs command should be executable', async () => {
         const commands = await vscode.commands.getCommands(true);
         assert.ok(commands.includes('pinecone.openDocs'));
+    });
+
+    test('manageApiKeys command should be executable', async () => {
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('pinecone.manageApiKeys'));
+    });
+
+    test('openInferenceToolbox command should be executable', async () => {
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('pinecone.openInferenceToolbox'));
     });
 
     test('openDocs command should work without authentication', async () => {
@@ -145,11 +180,19 @@ suite('Command Enablement Test Suite', () => {
             'pinecone.createBackup',
             'pinecone.viewBackups',
             'pinecone.addTags',
+            'pinecone.openDataOps',
             'pinecone.createAssistant',
             'pinecone.deleteAssistant',
             'pinecone.chatWithAssistant',
+            'pinecone.updateAssistant',
+            'pinecone.retrieveAssistantContext',
+            'pinecone.evaluateAssistantAnswer',
             'pinecone.uploadFiles',
-            'pinecone.deleteFile'
+            'pinecone.deleteFile',
+            'pinecone.viewFileDetails',
+            'pinecone.manageApiKeys',
+            'pinecone.openInferenceToolbox',
+            'pinecone.renameProject'
         ];
 
         for (const cmdId of authRequiredCommands) {

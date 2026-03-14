@@ -12,12 +12,13 @@ import { PineconeTreeDataProvider } from '../providers/pineconeTreeDataProvider'
 import { ChatPanel } from '../webview/chatPanel';
 import { AssistantModel } from '../api/types';
 import { buildProjectContextFromItem } from '../utils/treeItemHelpers';
-import { POLLING_CONFIG } from '../utils/constants';
+import { classifyError } from '../utils/errorHandling';
+import { refreshExplorer } from '../utils/refreshExplorer';
 
 /**
  * Handles all assistant-related commands in the extension.
  * 
- * Provides interactive wizards for assistant creation and
+ * Opens dedicated dialogs for assistant creation/update workflows and
  * manages the chat panel lifecycle.
  */
 export class AssistantCommands {
@@ -34,16 +35,11 @@ export class AssistantCommands {
     ) {}
 
     /**
-     * Creates a new assistant using an interactive wizard.
+     * Opens the Create Assistant dialog.
      * 
      * When invoked from a tree item context (e.g., right-click on Assistant category),
      * the project context is extracted from the tree item's parentId. For JWT auth,
      * this ensures the assistant is created in the correct project.
-     * 
-     * Prompts the user for:
-     * - Assistant name
-     * - System instructions (optional)
-     * - Deployment region
      * 
      * @param item - Optional tree item providing project context
      */
@@ -55,74 +51,14 @@ export class AssistantCommands {
         if (item?.parentId) {
             this.pineconeService.setProjectId(item.parentId);
         }
-        
-        // Step 1: Get assistant name
-        const name = await vscode.window.showInputBox({
-            prompt: 'Enter assistant name',
-            placeHolder: 'my-assistant',
-            validateInput: (value) => {
-                if (!value) {return 'Name is required';}
-                if (!/^[a-z0-9-]+$/.test(value)) {
-                    return 'Name must consist of lowercase alphanumeric characters or hyphens';
-                }
-                if (value.length > 45) {
-                    return 'Name must be 45 characters or less';
-                }
-                return null;
-            }
-        });
-        if (!name) { return; }
 
-        // Step 2: Get instructions (optional)
-        const instructions = await vscode.window.showInputBox({
-            prompt: 'Enter system instructions (optional)',
-            placeHolder: 'You are a helpful assistant that answers questions about our documentation.'
-        });
-
-        // Step 3: Select region (use configured default)
-        const config = vscode.workspace.getConfiguration('pinecone');
-        const defaultRegion = config.get<string>('defaultRegion', 'us');
-        
-        const regionOptions = [
-            { label: 'us', description: 'United States' },
-            { label: 'eu', description: 'European Union' }
-        ];
-        // Sort to put default first
-        regionOptions.sort((a, b) => {
-            if (a.label === defaultRegion) { return -1; }
-            if (b.label === defaultRegion) { return 1; }
-            return 0;
-        });
-        
-        const region = await vscode.window.showQuickPick(
-            regionOptions,
-            { placeHolder: `Select deployment region (default: ${defaultRegion})` }
+        const { CreateAssistantPanel } = await import('../webview/createAssistantPanel.js');
+        CreateAssistantPanel.createOrShow(
+            this.extensionUri,
+            this.pineconeService,
+            this.treeDataProvider,
+            projectContext
         );
-        if (!region) { return; }
-
-        // Create the assistant
-        try {
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Creating assistant "${name}"...`,
-                cancellable: false
-            }, async () => {
-                await this.pineconeService.createAssistant(
-                    name, 
-                    region.label, 
-                    instructions || undefined,
-                    undefined, // metadata
-                    projectContext
-                );
-            });
-            
-            vscode.window.showInformationMessage(
-                `Assistant "${name}" created successfully. Upload files to start using it.`
-            );
-            vscode.commands.executeCommand('pinecone.refresh');
-        } catch (e: unknown) {
-            this.handleError('create assistant', e);
-        }
     }
 
     /**
@@ -193,21 +129,12 @@ export class AssistantCommands {
                 await this.pineconeService.deleteAssistant(name, projectContext);
             });
             vscode.window.showInformationMessage(`Assistant "${name}" deleted successfully`);
-            
-            // Refresh after successful deletion using triple-refresh approach
-            // This ensures the tree view updates in Cursor IDE
-            setTimeout(async () => {
-                // Approach 1: Direct call to treeDataProvider (if available)
-                if (this.treeDataProvider) {
-                    this.treeDataProvider.refresh();
-                }
-                
-                // Approach 2: Execute refresh command
-                await vscode.commands.executeCommand('pinecone.refresh');
-                
-                // Approach 3: Focus on the explorer to force UI update
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({
+                treeDataProvider: this.treeDataProvider,
+                delayMs: 0,
+                focusExplorer: false
+            });
         } catch (e: unknown) {
             this.handleError('delete assistant', e);
         }
@@ -252,33 +179,36 @@ export class AssistantCommands {
      * @param error - The error that occurred
      */
     private handleError(operation: string, error: unknown): void {
-        const message = error instanceof Error ? error.message : String(error);
-        
-        // Check for common error patterns and provide guidance
-        if (message.includes('401') || message.includes('unauthorized')) {
+        const classified = classifyError(error);
+
+        if (classified.requiresLogin) {
             vscode.window.showErrorMessage(
-                `Failed to ${operation}: Authentication expired. Please log in again.`,
+                `Failed to ${operation}: ${classified.userMessage}`,
                 'Login'
             ).then(selection => {
                 if (selection === 'Login') {
                     vscode.commands.executeCommand('pinecone.login');
                 }
             });
-        } else if (message.includes('409') || message.includes('already exists')) {
+        } else if (classified.category === 'conflict') {
             vscode.window.showErrorMessage(
-                `Failed to ${operation}: An assistant with this name already exists.`
+                `Failed to ${operation}: ${classified.userMessage}`
             );
-        } else if (message.includes('404') || message.includes('not found')) {
+        } else if (classified.suggestRefresh) {
             vscode.window.showErrorMessage(
-                `Failed to ${operation}: Assistant not found. It may have been deleted.`,
+                `Failed to ${operation}: ${classified.userMessage}`,
                 'Refresh'
             ).then(selection => {
                 if (selection === 'Refresh') {
-                    vscode.commands.executeCommand('pinecone.refresh');
+                    void refreshExplorer({
+                        treeDataProvider: this.treeDataProvider,
+                        delayMs: 0,
+                        focusExplorer: false
+                    });
                 }
             });
         } else {
-            vscode.window.showErrorMessage(`Failed to ${operation}: ${message}`);
+            vscode.window.showErrorMessage(`Failed to ${operation}: ${classified.userMessage}`);
         }
     }
 }

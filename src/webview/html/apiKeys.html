@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>API Keys</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>API Keys: <span id="project-name">${projectName}</span></h2>
+        </div>
+
+        <section class="card">
+            <h3>Create API Key</h3>
+            <input id="key-name" placeholder="Key name">
+            <label for="key-roles">Roles (multi-select)</label>
+            <select id="key-roles" multiple size="6">
+                <option value="ProjectEditor" selected>ProjectEditor</option>
+                <option value="ProjectViewer">ProjectViewer</option>
+                <option value="ControlPlaneEditor">ControlPlaneEditor</option>
+                <option value="ControlPlaneViewer">ControlPlaneViewer</option>
+                <option value="DataPlaneEditor">DataPlaneEditor</option>
+                <option value="DataPlaneViewer">DataPlaneViewer</option>
+            </select>
+            <button id="create-key">Create Key</button>
+            <p class="hint">
+                Select either ProjectEditor/ProjectViewer, or select neither project role and choose Control Plane/Data Plane roles.
+                Project roles do not imply Control Plane or Data Plane roles.
+                Key secret is shown once and never stored by the extension.
+            </p>
+        </section>
+
+        <section class="card">
+            <h3>Existing Keys</h3>
+            <button id="refresh-keys" class="secondary-action" type="button">Refresh</button>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>ID</th>
+                        <th>Roles</th>
+                        <th>Created</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="keys-body"></tbody>
+            </table>
+        </section>
+
+        <div id="error" class="error hidden"></div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

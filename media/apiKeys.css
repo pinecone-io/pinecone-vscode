@@ -1,0 +1,119 @@
+body {
+    padding: 20px;
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-editor-background);
+    font-family: var(--vscode-font-family);
+}
+
+.container {
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+.header {
+    margin-bottom: 12px;
+}
+
+.header h2 {
+    margin: 0;
+}
+
+.card {
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.card h3 {
+    margin-top: 0;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+input,
+select,
+button {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 6px 0;
+    border-radius: 3px;
+}
+
+input,
+select {
+    padding: 8px;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+}
+
+select[multiple] {
+    min-height: 64px;
+}
+
+button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 8px 16px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.secondary-action {
+    width: auto;
+    padding: 6px 10px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border, transparent);
+}
+
+.secondary-action:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.revoke-btn {
+    width: auto;
+    min-width: 84px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+}
+
+th,
+td {
+    border-bottom: 1px solid var(--vscode-editorGroup-border);
+    padding: 8px 6px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.hint {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+    margin: 6px 0 0;
+}
+
+.error {
+    color: var(--vscode-errorForeground);
+    background-color: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.hidden {
+    display: none;
+}

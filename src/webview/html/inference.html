@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Inference Toolbox</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Inference Toolbox</h2>
+        </div>
+
+        <section class="card">
+            <h3>Embed</h3>
+            <div class="form-group">
+                <label for="embed-model">Model</label>
+                <select id="embed-model">
+                    <option value="">Loading embed models...</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="embed-input-type">Input Type (for models like multilingual-e5-large)</label>
+                <select id="embed-input-type">
+                    <option value="">Auto</option>
+                    <option value="query">query</option>
+                    <option value="passage">passage</option>
+                </select>
+            </div>
+            <textarea id="embed-inputs" rows="4" placeholder="One input per line, or JSON array"></textarea>
+            <button data-action="embed">Generate Embeddings</button>
+            <div id="embed-result-section" class="section-result hidden">
+                <div class="results-header">
+                    <h4>Embeddings</h4>
+                    <button id="clear-embed-results" class="secondary-action" type="button">Clear</button>
+                </div>
+                <div id="embed-results-list"></div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>Rerank</h3>
+            <div class="form-group">
+                <label for="rerank-model">Model</label>
+                <select id="rerank-model">
+                    <option value="">Loading rerank models...</option>
+                </select>
+            </div>
+            <textarea id="rerank-query" rows="2" placeholder="Query"></textarea>
+            <div class="form-group">
+                <label>Documents</label>
+                <div id="rerank-documents-list" class="rerank-documents-list"></div>
+                <div class="document-actions">
+                    <button id="add-rerank-document" type="button" class="secondary-action">Add Document</button>
+                    <button id="clear-rerank-documents" type="button" class="secondary-action">Clear All Documents</button>
+                </div>
+            </div>
+            <input id="rerank-topn" type="number" min="1" placeholder="Top N (optional)">
+            <button data-action="rerank">Rerank</button>
+            <div id="rerank-result-section" class="section-result hidden">
+                <div class="results-header">
+                    <h4>Rerank Results</h4>
+                    <button id="clear-rerank-results" class="secondary-action" type="button">Clear</button>
+                </div>
+                <div id="rerank-results-list"></div>
+            </div>
+        </section>
+
+        <div id="error" class="error hidden"></div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

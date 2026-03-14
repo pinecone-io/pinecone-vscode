@@ -209,14 +209,16 @@
         div.className = `message ${role}`;
         
         // Escape HTML and convert newlines
-        let html = escapeHtml(content).replace(/\n/g, '<br>');
+        let html = escapeHtml(String(content || '')).replace(/\n/g, '<br>');
 
         // Add citations if present
-        if (citations && citations.length > 0) {
+        if (Array.isArray(citations) && citations.length > 0) {
             html += '<div class="citations-panel"><strong>Citations:</strong>';
             citations.forEach((citation, index) => {
-                const refs = citation.references.map(ref => {
-                    let refText = escapeHtml(ref.file.name);
+                const refsArray = Array.isArray(citation.references) ? citation.references : [];
+                const refs = refsArray.map(ref => {
+                    const fileName = ref.file && ref.file.name ? ref.file.name : 'Unknown';
+                    let refText = escapeHtml(fileName);
                     if (ref.pages) {
                         refText += ` (p. ${ref.pages.join(', ')})`;
                     }

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Data Ops</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Data Ops: <span id="index-name">${indexName}</span></h2>
+            <p id="upsert-mode-hint" class="hint"></p>
+        </div>
+
+        <section class="card" id="upsert-vector-section">
+            <h3>Upsert Vector</h3>
+            <div class="form-group">
+                <label for="upsert-id">Vector ID</label>
+                <input id="upsert-id" placeholder="vector-id-1">
+            </div>
+            <div class="form-group">
+                <label for="upsert-namespace">Namespace (optional)</label>
+                <input id="upsert-namespace" placeholder="Default namespace">
+            </div>
+            <div class="form-group">
+                <label for="upsert-values">Vector Values (JSON array)</label>
+                <textarea id="upsert-values" rows="3" placeholder="[0.1, 0.2, 0.3]"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="upsert-metadata">Metadata (JSON, optional)</label>
+                <textarea id="upsert-metadata" rows="2" placeholder='{"category":"docs"}'></textarea>
+            </div>
+            <button data-action="upsertVectors">Upsert Vector</button>
+            <div id="result-upsertVectors" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="upsert-records-section">
+            <h3>Upsert Records</h3>
+            <div class="form-group">
+                <label for="records-namespace">Namespace (optional)</label>
+                <input id="records-namespace" placeholder="Default namespace">
+            </div>
+            <div class="form-group">
+                <label for="records-json">Records Payload (JSON object)</label>
+                <textarea id="records-json" rows="4" placeholder='{"records":[{"_id":"r1","chunk_text":"Hello world"}]}'></textarea>
+            </div>
+            <button data-action="upsertRecords">Upsert Records</button>
+            <div id="result-upsertRecords" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="fetch-vectors-section">
+            <h3>Fetch Vectors</h3>
+            <div class="form-group">
+                <label for="fetch-ids">Vector IDs (comma-separated)</label>
+                <input id="fetch-ids" placeholder="id-1,id-2,id-3">
+            </div>
+            <div class="form-group">
+                <label for="fetch-namespace">Namespace (optional)</label>
+                <input id="fetch-namespace" placeholder="Default namespace">
+            </div>
+            <button data-action="fetchVectors">Fetch by IDs</button>
+            <div id="result-fetchVectors" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="fetch-meta-section">
+            <h3>Fetch by Metadata</h3>
+            <div class="form-group">
+                <label for="fetch-meta-namespace">Namespace (optional)</label>
+                <input id="fetch-meta-namespace" placeholder="Default namespace">
+            </div>
+            <div class="form-group">
+                <label for="fetch-meta-limit">Limit (optional)</label>
+                <input id="fetch-meta-limit" type="number" min="1" placeholder="50">
+            </div>
+            <div class="form-group">
+                <label for="fetch-meta-filter">Filter (JSON)</label>
+                <textarea id="fetch-meta-filter" rows="2" placeholder='{"category":{"$eq":"docs"}}'></textarea>
+            </div>
+            <button data-action="fetchByMetadata">Fetch by Metadata</button>
+            <div id="result-fetchByMetadata" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="update-vector-section">
+            <h3>Update Vector</h3>
+            <div class="form-group">
+                <label for="update-id">Vector ID</label>
+                <input id="update-id" placeholder="vector-id-1">
+            </div>
+            <div class="form-group">
+                <label for="update-namespace">Namespace (optional)</label>
+                <input id="update-namespace" placeholder="Default namespace">
+            </div>
+            <div class="form-group">
+                <label for="update-values">Vector Values (JSON array, optional)</label>
+                <textarea id="update-values" rows="2" placeholder="[0.4, 0.5, 0.6]"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="update-set-metadata">Set Metadata (JSON)</label>
+                <textarea id="update-set-metadata" rows="2" placeholder='{"owner":"team-a"}'></textarea>
+            </div>
+            <button data-action="updateVector">Update Vector</button>
+            <div id="result-updateVector" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="update-meta-section">
+            <h3>Update by Metadata</h3>
+            <div class="form-group">
+                <label for="update-meta-namespace">Namespace (optional)</label>
+                <input id="update-meta-namespace" placeholder="Default namespace">
+            </div>
+            <div class="form-group">
+                <label for="update-meta-filter">Filter (JSON)</label>
+                <textarea id="update-meta-filter" rows="2" placeholder='{"category":{"$eq":"docs"}}'></textarea>
+            </div>
+            <div class="form-group">
+                <label for="update-meta-set">Set Metadata (JSON)</label>
+                <textarea id="update-meta-set" rows="2" placeholder='{"owner":"team-b"}'></textarea>
+            </div>
+            <label class="checkbox-label"><input type="checkbox" id="update-meta-dryrun"> Dry run</label>
+            <button data-action="updateByMetadata">Update by Metadata</button>
+            <div id="result-updateByMetadata" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="delete-vectors-section">
+            <h3>Delete Vectors</h3>
+            <div class="form-group">
+                <label for="delete-namespace">Namespace (optional)</label>
+                <input id="delete-namespace" placeholder="Default namespace">
+            </div>
+            <div class="form-group">
+                <label for="delete-ids">Vector IDs (comma-separated)</label>
+                <input id="delete-ids" placeholder="id-1,id-2">
+            </div>
+            <div class="form-group">
+                <label for="delete-filter">Filter (JSON, optional)</label>
+                <textarea id="delete-filter" rows="2" placeholder='{"category":{"$eq":"old"}}'></textarea>
+            </div>
+            <label class="checkbox-label"><input type="checkbox" id="delete-all"> Delete all in namespace</label>
+            <button data-action="deleteVectors">Delete</button>
+            <div id="result-deleteVectors" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="list-ids-section">
+            <h3>List Vector IDs</h3>
+            <div class="form-group">
+                <label for="list-namespace">Namespace (optional)</label>
+                <input id="list-namespace" placeholder="Default namespace">
+            </div>
+            <div class="form-group">
+                <label for="list-prefix">ID Prefix (optional)</label>
+                <input id="list-prefix" placeholder="user-">
+            </div>
+            <div class="form-group">
+                <label for="list-limit">Limit (optional)</label>
+                <input id="list-limit" type="number" min="1" placeholder="100">
+            </div>
+            <div class="form-group">
+                <label for="list-token">Pagination Token (optional)</label>
+                <input id="list-token" placeholder="next-page-token">
+            </div>
+            <button data-action="listVectorIds">List IDs</button>
+            <div id="result-listVectorIds" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="imports-section">
+            <h3>Imports</h3>
+            <div class="form-group">
+                <label for="import-uri">Import URI</label>
+                <input id="import-uri" placeholder="s3://bucket/path">
+            </div>
+            <div class="form-group">
+                <label for="import-integration-id">Integration ID (optional)</label>
+                <input id="import-integration-id" placeholder="integration-id">
+            </div>
+            <div class="form-group">
+                <label for="import-namespace">Namespace (optional)</label>
+                <input id="import-namespace" placeholder="Default namespace">
+            </div>
+            <div class="form-group">
+                <label for="import-mode">Mode (optional)</label>
+                <select id="import-mode">
+                    <option value="">Use service default</option>
+                    <option value="continue">continue</option>
+                    <option value="overwrite">overwrite</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="import-error-mode">Error Mode (optional)</label>
+                <select id="import-error-mode">
+                    <option value="">Use service default</option>
+                    <option value="continue">continue</option>
+                    <option value="abort">abort</option>
+                </select>
+            </div>
+            <button data-action="startImport">Start Import</button>
+            <div id="result-startImport" class="section-result hidden"></div>
+        </section>
+
+        <div id="error" class="error hidden"></div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

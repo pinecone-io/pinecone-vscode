@@ -132,26 +132,85 @@ button:disabled {
 /* Long text content */
 .text-content {
     background-color: var(--vscode-textBlockQuote-background);
-    padding: 8px 10px;
+    padding: 6px 8px;
     border-radius: 3px;
     border-left: 3px solid var(--vscode-textBlockQuote-border);
     font-family: var(--vscode-font-family);
     line-height: 1.5;
     white-space: pre-wrap;
     word-wrap: break-word;
+    position: relative;
+}
+
+.text-content-actions {
+    display: flex;
+    gap: 8px;
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    margin: 0;
+}
+
+.text-content-body {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    padding-right: 130px;
+    margin: 0;
+}
+
+.text-action-btn {
+    display: inline-block;
+    width: auto;
+    padding: 0 7px;
+    margin: 0;
+    font-size: 0.8em;
+    line-height: 1.2;
+    min-height: 20px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.results-header h3 {
+    margin: 0;
+}
+
+.secondary-action {
+    width: auto;
+    padding: 4px 10px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 3px;
+}
+
+.secondary-action:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
 .expand-btn {
-    display: inline-block;
-    width: auto;
-    padding: 2px 8px;
-    margin-top: 6px;
-    font-size: 0.8em;
     background-color: var(--vscode-button-secondaryBackground);
     color: var(--vscode-button-secondaryForeground);
 }
 
 .expand-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.copy-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.copy-btn:hover {
     background-color: var(--vscode-button-secondaryHoverBackground);
 }
 

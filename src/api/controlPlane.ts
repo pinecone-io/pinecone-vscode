@@ -18,6 +18,7 @@ import {
     CreateRestoreResponse,
     CreateIndexForModelRequest
 } from './types';
+import { normalizeHost } from './host';
 
 /**
  * Configuration options for updating an index.
@@ -207,7 +208,7 @@ export class ControlPlaneApi {
      */
     async describeIndexStats(host: string): Promise<IndexStats> {
         return this.client.request<IndexStats>('POST', '/describe_index_stats', {
-            host: `https://${host}`,
+            host: normalizeHost(host),
             body: {}
         });
     }

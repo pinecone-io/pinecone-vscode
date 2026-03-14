@@ -20,6 +20,11 @@ import {
     FileModel, 
     ChatResponse, 
     Metadata,
+    UpdateAssistantRequest,
+    AssistantContextRequest,
+    AssistantContextResponse,
+    AssistantEvaluationRequest,
+    AssistantEvaluationResponse,
     StreamChunk,
     StreamMessageStart,
     StreamContentDelta,
@@ -32,6 +37,7 @@ import fetch from 'node-fetch';
 import * as fs from 'fs';
 import { createComponentLogger } from '../utils/logger';
 import * as https from 'https';
+import { normalizeHost } from './host';
 
 /** Logger for AssistantApi operations */
 const log = createComponentLogger('AssistantApi');
@@ -118,31 +124,55 @@ function isValidMessageEnd(data: Record<string, unknown>): data is {
            typeof usage.total_tokens === 'number';
 }
 
-// ============================================================================
-// URL Normalization Helpers
-// ============================================================================
+/**
+ * Coerces unknown usage payloads into a valid token usage object.
+ */
+function coerceUsage(usage: unknown): { prompt_tokens: number; completion_tokens: number; total_tokens: number } {
+    const source = (typeof usage === 'object' && usage !== null)
+        ? usage as Record<string, unknown>
+        : {};
+
+    const prompt = typeof source.prompt_tokens === 'number' ? source.prompt_tokens : 0;
+    const completion = typeof source.completion_tokens === 'number' ? source.completion_tokens : 0;
+    const total = typeof source.total_tokens === 'number' ? source.total_tokens : (prompt + completion);
+
+    return {
+        prompt_tokens: prompt,
+        completion_tokens: completion,
+        total_tokens: total
+    };
+}
 
 /**
- * Normalizes a host URL by ensuring it has the https:// protocol.
- * 
- * The Pinecone API returns host values that may already include the protocol
- * (e.g., "https://prod-1-data.ke.pinecone.io"), but sometimes they don't.
- * This function ensures consistent URL formatting to avoid double-protocol issues.
- * 
- * @param host - The host URL which may or may not include the protocol
- * @returns A properly formatted URL with https:// prefix
- * 
- * @example
- * normalizeHost('prod-1-data.ke.pinecone.io') // => 'https://prod-1-data.ke.pinecone.io'
- * normalizeHost('https://prod-1-data.ke.pinecone.io') // => 'https://prod-1-data.ke.pinecone.io'
+ * Extracts content text from legacy or variant chunk shapes.
  */
-function normalizeHost(host: string): string {
-    // If host already starts with a protocol, return as-is
-    if (host.startsWith('https://') || host.startsWith('http://')) {
-        return host;
+function extractChunkContent(data: Record<string, unknown>): string | null {
+    if (typeof data.content === 'string') {
+        return data.content;
     }
-    // Otherwise, prepend https://
-    return `https://${host}`;
+
+    if (typeof data.delta === 'string') {
+        return data.delta;
+    }
+
+    if (typeof data.delta === 'object' && data.delta !== null) {
+        const delta = data.delta as Record<string, unknown>;
+        if (typeof delta.content === 'string') {
+            return delta.content;
+        }
+        if (typeof delta.text === 'string') {
+            return delta.text;
+        }
+    }
+
+    if (typeof data.message === 'object' && data.message !== null) {
+        const message = data.message as Record<string, unknown>;
+        if (typeof message.content === 'string') {
+            return message.content;
+        }
+    }
+
+    return null;
 }
 
 import { AuthService } from '../services/authService';
@@ -315,6 +345,22 @@ export class AssistantApi {
     async describeAssistant(name: string, projectContext?: ProjectContext): Promise<AssistantModel> {
         // Control plane: /assistant/assistants/{name}
         return this.client.request<AssistantModel>('GET', `/assistant/assistants/${name}`, {
+            projectContext
+        });
+    }
+
+    /**
+     * Updates an assistant's instructions or metadata.
+     *
+     * Control plane operation.
+     */
+    async updateAssistant(
+        name: string,
+        request: UpdateAssistantRequest,
+        projectContext?: ProjectContext
+    ): Promise<AssistantModel> {
+        return this.client.request<AssistantModel>('PATCH', `/assistant/assistants/${name}`, {
+            body: request,
             projectContext
         });
     }
@@ -555,25 +601,68 @@ export class AssistantApi {
                         return;
                     }
 
+                    // Avoid indefinite hangs if the stream stalls.
+                    res.setTimeout(120000, () => {
+                        req.destroy(new Error('Streaming chat timed out while waiting for data.'));
+                    });
+
+                    const contentType = String(res.headers['content-type'] || '').toLowerCase();
+                    const expectsSse = contentType.includes('text/event-stream');
+
                     // Buffer for incomplete lines
                     let buffer = '';
+                    let rawBody = '';
+                    let emittedContent = false;
 
                     res.on('data', (chunk: Buffer) => {
-                        buffer += chunk.toString();
-                        
-                        // Process complete lines
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+                        const text = chunk.toString();
+                        rawBody += text;
 
-                        for (const line of lines) {
-                            this.processSSELine(line.trim(), options);
+                        if (expectsSse) {
+                            buffer += text;
+                            
+                            // Process complete lines
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+                            for (const line of lines) {
+                                const before = emittedContent;
+                                this.processSSELine(line.trim(), options);
+                                emittedContent = before || line.trim().startsWith('data:');
+                            }
                         }
                     });
 
                     res.on('end', () => {
-                        // Process any remaining data
-                        if (buffer.trim()) {
-                            this.processSSELine(buffer.trim(), options);
+                        if (expectsSse) {
+                            // Process any remaining data
+                            if (buffer.trim()) {
+                                const line = buffer.trim();
+                                this.processSSELine(line, options);
+                                emittedContent = emittedContent || line.startsWith('data:');
+                            }
+                        }
+
+                        // Fallback: Some environments return standard JSON even when stream=true.
+                        // Convert that JSON response into stream callbacks so the UI still resolves.
+                        if (!emittedContent && rawBody.trim().startsWith('{')) {
+                            try {
+                                const json = JSON.parse(rawBody) as Record<string, unknown>;
+                                const message = json.message as Record<string, unknown> | undefined;
+                                const content = typeof message?.content === 'string'
+                                    ? message.content
+                                    : undefined;
+                                if (content) {
+                                    options.onChunk({
+                                        type: 'content_chunk',
+                                        id: 'json-fallback',
+                                        model: typeof json.model === 'string' ? json.model : 'unknown',
+                                        delta: { content }
+                                    } as StreamContentDelta);
+                                }
+                            } catch (error: unknown) {
+                                log.warn('Failed JSON fallback parse for streaming chat response:', error);
+                            }
                         }
                         options.onComplete();
                         resolve();
@@ -587,6 +676,11 @@ export class AssistantApi {
 
             // Notify caller of the request object (for abort)
             onRequest(req);
+
+            // Connection-level timeout before/while establishing stream.
+            req.setTimeout(120000, () => {
+                req.destroy(new Error('Streaming chat request timed out.'));
+            });
 
             req.on('error', (error) => {
                 reject(error);
@@ -607,14 +701,26 @@ export class AssistantApi {
             return;
         }
 
-        // SSE lines are prefixed with "data:"
-        if (!line.startsWith('data:')) {
+        // Accept both strict SSE `data:` lines and plain JSON line payloads.
+        const payload = line.startsWith('data:')
+            ? line.slice(5).trim()
+            : line.trim();
+
+        if (!line.startsWith('data:') && !(payload.startsWith('{') || payload === '[DONE]')) {
             return;
         }
 
-        // Extract JSON after "data:" prefix
-        const jsonStr = line.slice(5).trim();
-        if (!jsonStr) {
+        if (!payload) {
+            return;
+        }
+
+        if (payload === '[DONE]') {
+            options.onChunk({
+                type: 'message_end',
+                id: 'done',
+                model: 'unknown',
+                usage: coerceUsage(undefined)
+            } as StreamMessageEnd);
             return;
         }
 
@@ -636,7 +742,7 @@ export class AssistantApi {
         // debugging without disrupting the user experience.
         // ─────────────────────────────────────────────────────────────────
         try {
-            const data = JSON.parse(jsonStr);
+            const data = JSON.parse(payload) as Record<string, unknown>;
             const chunk = this.parseStreamChunk(data);
             if (chunk) {
                 options.onChunk(chunk);
@@ -655,6 +761,31 @@ export class AssistantApi {
      */
     private parseStreamChunk(data: Record<string, unknown>): StreamChunk | null {
         const type = data.type;
+        const fallbackContent = extractChunkContent(data);
+
+        // Defensive fallback: tolerate chunks that omit "type" but include content.
+        if (fallbackContent && isValidContentDelta({
+            type: 'content_chunk',
+            id: typeof data.id === 'string' ? data.id : 'fallback',
+            model: typeof data.model === 'string' ? data.model : 'unknown',
+            delta: { content: fallbackContent }
+        })) {
+            return {
+                type: 'content_chunk',
+                id: typeof data.id === 'string' ? data.id : 'fallback',
+                model: typeof data.model === 'string' ? data.model : 'unknown',
+                delta: { content: fallbackContent }
+            } as StreamContentDelta;
+        }
+
+        if (type === 'done' || type === 'completed' || type === 'message_stop') {
+            return {
+                type: 'message_end',
+                id: typeof data.id === 'string' ? data.id : 'done',
+                model: typeof data.model === 'string' ? data.model : 'unknown',
+                usage: coerceUsage(data.usage)
+            } as StreamMessageEnd;
+        }
 
         switch (type) {
             case 'message_start':
@@ -721,14 +852,39 @@ export class AssistantApi {
      * @returns Array of file models with processing status
      * @throws {PineconeApiError} When the request fails
      */
-    async listFiles(host: string, assistantName: string, projectContext?: ProjectContext): Promise<FileModel[]> {
+    async listFiles(
+        host: string,
+        assistantName: string,
+        projectContext?: ProjectContext,
+        metadataFilter?: Record<string, unknown>
+    ): Promise<FileModel[]> {
         // Data plane: https://{host}/assistant/files/{assistantName}
         // Note: normalizeHost handles cases where host may already include https://
+        const queryParams = metadataFilter ? { metadata: JSON.stringify(metadataFilter) } : undefined;
         const response = await this.client.request<{ files: FileModel[] }>('GET', `/assistant/files/${assistantName}`, {
             host: normalizeHost(host),
+            queryParams,
             projectContext
         });
         return response.files || [];
+    }
+
+    /**
+     * Describes one assistant file.
+     */
+    async describeFile(
+        host: string,
+        assistantName: string,
+        fileId: string,
+        projectContext?: ProjectContext,
+        includeUrl: boolean = false
+    ): Promise<FileModel> {
+        const queryParams = includeUrl ? { include_url: 'true' } : undefined;
+        return this.client.request<FileModel>('GET', `/assistant/files/${assistantName}/${fileId}`, {
+            host: normalizeHost(host),
+            queryParams,
+            projectContext
+        });
     }
 
     /**
@@ -797,6 +953,38 @@ export class AssistantApi {
         return this.client.request<FileModel>('POST', `/assistant/files/${assistantName}`, {
             host: normalizeHost(host),
             body: formData,
+            projectContext
+        });
+    }
+
+    /**
+     * Retrieves context snippets for an assistant query.
+     */
+    async retrieveContext(
+        host: string,
+        assistantName: string,
+        request: AssistantContextRequest,
+        projectContext?: ProjectContext
+    ): Promise<AssistantContextResponse> {
+        return this.client.request<AssistantContextResponse>('POST', `/assistant/chat/${assistantName}/context`, {
+            host: normalizeHost(host),
+            body: request,
+            projectContext
+        });
+    }
+
+    /**
+     * Evaluates an assistant answer.
+     */
+    async evaluateAnswer(
+        host: string,
+        _assistantName: string,
+        request: AssistantEvaluationRequest,
+        projectContext?: ProjectContext
+    ): Promise<AssistantEvaluationResponse> {
+        return this.client.request<AssistantEvaluationResponse>('POST', '/assistant/evaluation/metrics/alignment', {
+            host: normalizeHost(host),
+            body: request,
             projectContext
         });
     }

@@ -18,13 +18,17 @@
     const errorDiv = document.getElementById('error');
     const resultsDiv = document.getElementById('results');
     const matchesList = document.getElementById('matches-list');
+    const clearResultsBtn = document.getElementById('clear-results-btn');
     const textSearchSection = document.getElementById('text-search-section');
     const vectorSearchSection = document.getElementById('vector-search-section');
     const embedInfo = document.getElementById('embed-info');
     const metadataOption = document.getElementById('metadata-option');
+    const searchAdvancedSection = document.getElementById('search-advanced-section');
+    const MAX_TEXT_PREVIEW_LENGTH = 300;
 
     // Track whether index has integrated embeddings
     let hasIntegratedEmbeddings = false;
+    let nextCopyRequestId = 1;
 
     // Notify extension that webview is ready
     vscode.postMessage({ command: 'ready' });
@@ -45,12 +49,14 @@
             embedInfo.textContent = `Using integrated embeddings (${model || 'model'})`;
             // Hide metadata option for integrated embeddings (fields are always returned)
             metadataOption.classList.add('hidden');
+            searchAdvancedSection.classList.remove('hidden');
         } else {
             // Show vector search, hide text search
             textSearchSection.classList.add('hidden');
             vectorSearchSection.classList.remove('hidden');
             embedInfo.classList.add('hidden');
             metadataOption.classList.remove('hidden');
+            searchAdvancedSection.classList.add('hidden');
         }
     }
 
@@ -63,6 +69,7 @@
         const filterStr = document.getElementById('filter-input').value;
         const includeValues = document.getElementById('include-values').checked;
         const includeMetadata = document.getElementById('include-metadata').checked;
+        const fieldsStr = document.getElementById('fields-input').value;
 
         // Build params based on search mode
         let params = {
@@ -70,7 +77,8 @@
             topK,
             filterStr,
             includeValues,
-            includeMetadata
+            includeMetadata,
+            fieldsStr
         };
 
         if (hasIntegratedEmbeddings) {
@@ -99,6 +107,9 @@
         errorDiv.classList.add('hidden');
         resultsDiv.classList.add('hidden');
         matchesList.innerHTML = '';
+        if (clearResultsBtn) {
+            clearResultsBtn.classList.add('hidden');
+        }
         queryBtn.disabled = true;
 
         // Send query to extension
@@ -107,6 +118,49 @@
             params: params
         });
     });
+
+    errorDiv.addEventListener('click', event => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+        if (target.classList.contains('login-btn')) {
+            requestLogin();
+        }
+    });
+
+    matchesList.addEventListener('click', event => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const actionButton = target.closest('button[data-text-action]');
+        if (!(actionButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const container = actionButton.closest('.text-content[data-full]');
+        if (!(container instanceof HTMLElement)) {
+            return;
+        }
+
+        const action = actionButton.getAttribute('data-text-action');
+        if (action === 'toggle') {
+            toggleTextContent(container);
+            return;
+        }
+
+        if (action === 'copy') {
+            requestCopy(container.dataset.full || '', actionButton);
+        }
+    });
+
+    if (clearResultsBtn) {
+        clearResultsBtn.addEventListener('click', () => {
+            clearResults();
+        });
+    }
 
     /**
      * Handles messages from the extension.
@@ -137,6 +191,12 @@
                 break;
             case 'authExpired':
                 showAuthExpired();
+                break;
+            case 'copied':
+                markCopied(message.copyId);
+                break;
+            case 'copyError':
+                markCopyFailed(message.copyId, message.message);
                 break;
         }
     });
@@ -178,7 +238,7 @@
             <div class="auth-expired">
                 <strong>Session Expired</strong>
                 <p>Your authentication has expired. Please log in again to continue.</p>
-                <button onclick="requestLogin()" class="login-btn">Login</button>
+                <button class="login-btn" type="button">Login</button>
             </div>
         `;
         errorDiv.classList.remove('hidden');
@@ -187,9 +247,10 @@
     /**
      * Requests the extension to initiate login.
      */
-    window.requestLogin = function() {
+    function requestLogin() {
         vscode.postMessage({ command: 'requestLogin' });
-    };
+    }
+    window.requestLogin = requestLogin;
 
     /**
      * Displays query results.
@@ -199,7 +260,14 @@
         resultsDiv.classList.remove('hidden');
         if (!data.matches || data.matches.length === 0) {
             matchesList.innerHTML = '<p>No matches found.</p>';
+            if (clearResultsBtn) {
+                clearResultsBtn.classList.add('hidden');
+            }
             return;
+        }
+
+        if (clearResultsBtn) {
+            clearResultsBtn.classList.remove('hidden');
         }
 
         data.matches.forEach(match => {
@@ -270,12 +338,7 @@
 
         // Handle long text fields (like 'text', 'content', 'chunk')
         if (typeof value === 'string' && (key === 'text' || key === 'content' || key === 'chunk' || value.length > 200)) {
-            const truncated = truncateText(value, 300);
-            const needsExpand = value.length > 300;
-            if (needsExpand) {
-                return `<div class="text-content expandable" data-full="${escapeAttr(value)}">${escapeHtml(truncated)}<button class="expand-btn" onclick="toggleExpand(this)">Show more</button></div>`;
-            }
-            return `<div class="text-content">${escapeHtml(value)}</div>`;
+            return renderTextContent(value);
         }
 
         // Handle arrays
@@ -303,6 +366,30 @@
         return text.substring(0, maxLength) + '...';
     }
 
+    function renderTextContent(fullText) {
+        const normalizedText = String(fullText || '').replace(/^\s+/, '');
+        const isExpandable = normalizedText.length > MAX_TEXT_PREVIEW_LENGTH;
+        const collapsedText = truncateText(normalizedText, MAX_TEXT_PREVIEW_LENGTH);
+
+        return `
+            <div class="text-content ${isExpandable ? 'expandable' : ''}" data-full="${escapeAttr(normalizedText)}" data-collapsed="${escapeAttr(collapsedText)}" data-expanded="false">
+                <div class="text-content-actions">
+                    <button class="text-action-btn copy-btn" data-text-action="copy" type="button">Copy</button>
+                    ${isExpandable ? '<button class="text-action-btn expand-btn" data-text-action="toggle" type="button">Show more</button>' : ''}
+                </div>
+                <div class="text-content-body">${escapeHtml(isExpandable ? collapsedText : normalizedText)}</div>
+            </div>
+        `;
+    }
+
+    function clearResults() {
+        matchesList.innerHTML = '';
+        resultsDiv.classList.add('hidden');
+        if (clearResultsBtn) {
+            clearResultsBtn.classList.add('hidden');
+        }
+    }
+
     /**
      * Escapes string for use in HTML attributes.
      * @param {string} text - Text to escape
@@ -317,25 +404,61 @@
             .replace(/>/g, '&gt;');
     }
 
-    /**
-     * Toggles expanded state for long text content.
-     * @param {HTMLElement} btn - The expand/collapse button
-     */
-    window.toggleExpand = function(btn) {
-        const container = btn.parentElement;
-        const fullText = container.dataset.full;
-        const isExpanded = container.classList.contains('expanded');
-        
-        if (isExpanded) {
-            container.classList.remove('expanded');
-            container.innerHTML = escapeHtml(truncateText(fullText, 300)) + 
-                '<button class="expand-btn" onclick="toggleExpand(this)">Show more</button>';
-        } else {
-            container.classList.add('expanded');
-            container.innerHTML = escapeHtml(fullText) + 
-                '<button class="expand-btn" onclick="toggleExpand(this)">Show less</button>';
+    function toggleTextContent(container) {
+        const isExpanded = container.dataset.expanded === 'true';
+        const fullText = container.dataset.full || '';
+        const collapsedText = container.dataset.collapsed || truncateText(fullText, MAX_TEXT_PREVIEW_LENGTH);
+        const body = container.querySelector('.text-content-body');
+        const toggleButton = container.querySelector('button[data-text-action="toggle"]');
+
+        if (body) {
+            body.textContent = isExpanded ? collapsedText : fullText;
         }
-    };
+        if (toggleButton) {
+            toggleButton.textContent = isExpanded ? 'Show more' : 'Show less';
+        }
+        container.dataset.expanded = isExpanded ? 'false' : 'true';
+    }
+
+    function requestCopy(fullText, button) {
+        const copyId = `copy-${nextCopyRequestId++}`;
+        button.dataset.copyId = copyId;
+        button.disabled = true;
+        button.textContent = 'Copying...';
+        vscode.postMessage({
+            command: 'copyToClipboard',
+            text: fullText,
+            copyId
+        });
+    }
+
+    function markCopied(copyId) {
+        const selector = `button[data-copy-id="${copyId}"]`;
+        const button = document.querySelector(selector);
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        button.disabled = false;
+        button.textContent = 'Copied';
+        setTimeout(() => {
+            button.textContent = 'Copy';
+            button.removeAttribute('data-copy-id');
+        }, 1200);
+    }
+
+    function markCopyFailed(copyId, message) {
+        const selector = `button[data-copy-id="${copyId}"]`;
+        const button = document.querySelector(selector);
+        if (button instanceof HTMLButtonElement) {
+            button.disabled = false;
+            button.textContent = 'Copy';
+            button.removeAttribute('data-copy-id');
+        }
+        if (message) {
+            showError(message);
+        }
+    }
 
     /**
      * Escapes HTML special characters to prevent XSS.

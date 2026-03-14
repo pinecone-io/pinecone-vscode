@@ -70,6 +70,155 @@ function shouldUseTextSearch(
 }
 
 /**
+ * Parses comma-separated values used for query fields/rerank rank_fields.
+ */
+function parseCsvValues(input: string | undefined): string[] {
+    return (input || '')
+        .split(',')
+        .map(v => v.trim())
+        .filter(Boolean);
+}
+
+function normalizeInferenceEntries(values: unknown[]): Array<Record<string, unknown>> {
+    const normalized: Array<Record<string, unknown>> = [];
+    for (const entry of values) {
+        if (typeof entry === 'string') {
+            const text = entry.trim();
+            if (text) {
+                normalized.push({ text });
+            }
+            continue;
+        }
+        if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+            normalized.push(entry as Record<string, unknown>);
+            continue;
+        }
+        throw new Error('Invalid entry');
+    }
+    return normalized;
+}
+
+function parseInferenceEmbedInputs(raw: string): Array<Record<string, unknown>> {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+        throw new Error('Embed inputs are required.');
+    }
+    try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+            return normalizeInferenceEntries(parsed);
+        }
+    } catch {
+        // ignore and fallback to newline
+    }
+    return trimmed.split('\n').map(v => v.trim()).filter(Boolean).map(text => ({ text }));
+}
+
+function parseInferenceRerankDocuments(raw: string): Array<Record<string, unknown>> {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+        throw new Error('At least one document is required for rerank.');
+    }
+    try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+            return normalizeInferenceEntries(parsed);
+        }
+    } catch {
+        // ignore and fallback to newline
+    }
+    const docs = trimmed.split('\n').map(v => v.trim()).filter(Boolean).map(text => ({ text }));
+    if (!docs.length) {
+        throw new Error('At least one document is required for rerank.');
+    }
+    return docs;
+}
+
+function buildTextPreviewState(fullText: string, maxLength: number = 300): {
+    fullText: string;
+    collapsedText: string;
+    isExpandable: boolean;
+    isExpanded: boolean;
+} {
+    const isExpandable = fullText.length > maxLength;
+    return {
+        fullText,
+        collapsedText: isExpandable ? `${fullText.slice(0, maxLength)}...` : fullText,
+        isExpandable,
+        isExpanded: false
+    };
+}
+
+function toggleTextPreview(state: {
+    fullText: string;
+    collapsedText: string;
+    isExpandable: boolean;
+    isExpanded: boolean;
+}): string {
+    if (!state.isExpandable) {
+        return state.fullText;
+    }
+    state.isExpanded = !state.isExpanded;
+    return state.isExpanded ? state.fullText : state.collapsedText;
+}
+
+const API_KEY_ROLE = {
+    projectEditor: 'ProjectEditor',
+    projectViewer: 'ProjectViewer',
+    controlPlaneEditor: 'ControlPlaneEditor',
+    controlPlaneViewer: 'ControlPlaneViewer',
+    dataPlaneEditor: 'DataPlaneEditor',
+    dataPlaneViewer: 'DataPlaneViewer'
+} as const;
+
+type ApiKeyRole = typeof API_KEY_ROLE[keyof typeof API_KEY_ROLE];
+
+function normalizeApiKeyRoles(currentRoles: ApiKeyRole[], previousRoles: ApiKeyRole[]): ApiKeyRole[] {
+    const selection = new Set<ApiKeyRole>(currentRoles);
+    const previous = new Set<ApiKeyRole>(previousRoles);
+    const preferredRole = currentRoles.find(role => !previous.has(role));
+
+    const resolveExclusive = (a: ApiKeyRole, b: ApiKeyRole): void => {
+        if (!selection.has(a) || !selection.has(b)) {
+            return;
+        }
+        if (preferredRole === b) {
+            selection.delete(a);
+            return;
+        }
+        selection.delete(b);
+    };
+
+    resolveExclusive(API_KEY_ROLE.projectEditor, API_KEY_ROLE.projectViewer);
+    resolveExclusive(API_KEY_ROLE.controlPlaneEditor, API_KEY_ROLE.controlPlaneViewer);
+    resolveExclusive(API_KEY_ROLE.dataPlaneEditor, API_KEY_ROLE.dataPlaneViewer);
+
+    const projectSelected = selection.has(API_KEY_ROLE.projectEditor) || selection.has(API_KEY_ROLE.projectViewer);
+    const controlPlaneSelected = selection.has(API_KEY_ROLE.controlPlaneEditor) || selection.has(API_KEY_ROLE.controlPlaneViewer);
+    const dataPlaneSelected = selection.has(API_KEY_ROLE.dataPlaneEditor) || selection.has(API_KEY_ROLE.dataPlaneViewer);
+    const planeSelected = controlPlaneSelected || dataPlaneSelected;
+
+    if (projectSelected && planeSelected) {
+        const preferredIsProject = preferredRole === API_KEY_ROLE.projectEditor || preferredRole === API_KEY_ROLE.projectViewer;
+        if (preferredIsProject) {
+            selection.delete(API_KEY_ROLE.controlPlaneEditor);
+            selection.delete(API_KEY_ROLE.controlPlaneViewer);
+            selection.delete(API_KEY_ROLE.dataPlaneEditor);
+            selection.delete(API_KEY_ROLE.dataPlaneViewer);
+        } else {
+            selection.delete(API_KEY_ROLE.projectEditor);
+            selection.delete(API_KEY_ROLE.projectViewer);
+        }
+    }
+
+    if (selection.size === 0) {
+        selection.add(API_KEY_ROLE.projectEditor);
+    }
+
+    return Array.from(selection);
+}
+
+/**
  * Checks if an error message indicates an authentication problem.
  * Shared between QueryPanel and ChatPanel.
  */
@@ -178,6 +327,64 @@ suite('Query Panel Message Handling Tests', () => {
 
         test('should not use text search when text undefined', () => {
             assert.strictEqual(shouldUseTextSearch(undefined, true), false);
+        });
+    });
+
+    suite('Query Advanced Options Parsing', () => {
+        test('should parse comma-separated fields', () => {
+            assert.deepStrictEqual(parseCsvValues('title, url , text'), ['title', 'url', 'text']);
+        });
+    });
+
+    suite('Query Result Text Preview Actions', () => {
+        test('should collapse long preview text and append ellipsis', () => {
+            const longText = 'x'.repeat(350);
+            const state = buildTextPreviewState(longText);
+            assert.strictEqual(state.isExpandable, true);
+            assert.strictEqual(state.collapsedText.length, 303);
+            assert.ok(state.collapsedText.endsWith('...'));
+        });
+
+        test('should toggle between collapsed and full text', () => {
+            const longText = 'x'.repeat(350);
+            const state = buildTextPreviewState(longText);
+
+            const expanded = toggleTextPreview(state);
+            assert.strictEqual(expanded, longText);
+            assert.strictEqual(state.isExpanded, true);
+
+            const collapsed = toggleTextPreview(state);
+            assert.strictEqual(collapsed, state.collapsedText);
+            assert.strictEqual(state.isExpanded, false);
+        });
+
+        test('copy payload should always use full text, not truncated preview', () => {
+            const longText = 'x'.repeat(350);
+            const state = buildTextPreviewState(longText);
+            assert.notStrictEqual(state.collapsedText, longText);
+            assert.strictEqual(state.fullText, longText);
+        });
+    });
+
+    suite('Inference Payload Parsing', () => {
+        test('embed input newline text maps to object array', () => {
+            const parsed = parseInferenceEmbedInputs('hello\nworld');
+            assert.deepStrictEqual(parsed, [{ text: 'hello' }, { text: 'world' }]);
+        });
+
+        test('embed input JSON string array maps to object array', () => {
+            const parsed = parseInferenceEmbedInputs('["hello"]');
+            assert.deepStrictEqual(parsed, [{ text: 'hello' }]);
+        });
+
+        test('rerank documents newline text maps to object array', () => {
+            const parsed = parseInferenceRerankDocuments('doc one\ndoc two');
+            assert.deepStrictEqual(parsed, [{ text: 'doc one' }, { text: 'doc two' }]);
+        });
+
+        test('rerank documents JSON object array is preserved', () => {
+            const parsed = parseInferenceRerankDocuments('[{"text":"doc one","id":"1"}]');
+            assert.deepStrictEqual(parsed, [{ text: 'doc one', id: '1' }]);
         });
     });
 });
@@ -501,5 +708,66 @@ suite('Query Parameter Parsing Tests', () => {
 
     test('should use default for non-numeric string', () => {
         assert.strictEqual(parseTopK('invalid'), 10);
+    });
+});
+
+suite('API Key Role Selection Rules', () => {
+    function asSorted(roles: ApiKeyRole[]): string[] {
+        return [...roles].sort();
+    }
+
+    test('defaults to ProjectEditor role set when no roles are selected', () => {
+        const normalized = normalizeApiKeyRoles([], []);
+        assert.deepStrictEqual(asSorted(normalized), [API_KEY_ROLE.projectEditor]);
+    });
+
+    test('project role mode keeps only a project role', () => {
+        const normalized = normalizeApiKeyRoles([API_KEY_ROLE.projectEditor], []);
+        assert.deepStrictEqual(asSorted(normalized), [API_KEY_ROLE.projectEditor]);
+    });
+
+    test('project viewer mode keeps only ProjectViewer', () => {
+        const normalized = normalizeApiKeyRoles([API_KEY_ROLE.projectViewer], []);
+        assert.deepStrictEqual(asSorted(normalized), [API_KEY_ROLE.projectViewer]);
+    });
+
+    test('control-plane and data-plane roles can be selected without project role', () => {
+        const normalized = normalizeApiKeyRoles([
+            API_KEY_ROLE.controlPlaneViewer,
+            API_KEY_ROLE.dataPlaneEditor
+        ], []);
+        assert.deepStrictEqual(asSorted(normalized), asSorted([
+            API_KEY_ROLE.controlPlaneViewer,
+            API_KEY_ROLE.dataPlaneEditor
+        ]));
+    });
+
+    test('pairwise editor/viewer conflicts keep the newest role in that pair', () => {
+        const normalized = normalizeApiKeyRoles([
+            API_KEY_ROLE.controlPlaneEditor,
+            API_KEY_ROLE.controlPlaneViewer
+        ], [API_KEY_ROLE.controlPlaneEditor]);
+        assert.deepStrictEqual(normalized, [API_KEY_ROLE.controlPlaneViewer]);
+    });
+
+    test('selecting a project role clears control/data role mode', () => {
+        const normalized = normalizeApiKeyRoles([
+            API_KEY_ROLE.controlPlaneViewer,
+            API_KEY_ROLE.dataPlaneEditor,
+            API_KEY_ROLE.projectViewer
+        ], [API_KEY_ROLE.controlPlaneViewer, API_KEY_ROLE.dataPlaneEditor]);
+        assert.deepStrictEqual(asSorted(normalized), [API_KEY_ROLE.projectViewer]);
+    });
+
+    test('selecting control/data roles clears project role mode', () => {
+        const normalized = normalizeApiKeyRoles([
+            API_KEY_ROLE.projectEditor,
+            API_KEY_ROLE.controlPlaneViewer,
+            API_KEY_ROLE.dataPlaneEditor
+        ], [API_KEY_ROLE.projectEditor]);
+        assert.deepStrictEqual(asSorted(normalized), asSorted([
+            API_KEY_ROLE.controlPlaneViewer,
+            API_KEY_ROLE.dataPlaneEditor
+        ]));
     });
 });

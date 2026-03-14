@@ -12,7 +12,26 @@
  */
 
 import { PineconeClient, ProjectContext } from './client';
-import { QueryResponse } from './types';
+import {
+    QueryResponse,
+    UpsertVectorsRequest,
+    UpsertVectorsResponse,
+    UpsertRecordsRequest,
+    UpsertRecordsResponse,
+    FetchVectorsResponse,
+    FetchVectorsByMetadataRequest,
+    FetchVectorsByMetadataResponse,
+    UpdateVectorRequest,
+    UpdateVectorsByMetadataRequest,
+    UpdateVectorsByMetadataResponse,
+    DeleteVectorsRequest,
+    ListVectorIdsResponse,
+    StartImportRequest,
+    StartImportResponse,
+    ListImportsResponse,
+    ImportJob
+} from './types';
+import { normalizeHost } from './host';
 
 /**
  * Parameters for a vector similarity query.
@@ -192,7 +211,7 @@ export class DataPlaneApi {
         projectContext?: ProjectContext
     ): Promise<QueryResponse> {
         return this.client.request<QueryResponse>('POST', '/query', {
-            host: `https://${host}`,
+            host: normalizeHost(host),
             body: params,
             projectContext
         });
@@ -266,8 +285,223 @@ export class DataPlaneApi {
         }
         
         return this.client.request<SearchResponse>('POST', `/records/namespaces/${namespace}/search`, {
-            host: `https://${host}`,
+            host: normalizeHost(host),
             body,
+            projectContext
+        });
+    }
+
+    /**
+     * Upserts vectors into an index namespace.
+     */
+    async upsertVectors(
+        host: string,
+        request: UpsertVectorsRequest,
+        projectContext?: ProjectContext
+    ): Promise<UpsertVectorsResponse> {
+        return this.client.request<UpsertVectorsResponse>('POST', '/vectors/upsert', {
+            host: normalizeHost(host),
+            body: request,
+            projectContext
+        });
+    }
+
+    /**
+     * Upserts text records for integrated embedding indexes.
+     */
+    async upsertRecords(
+        host: string,
+        namespace: string,
+        request: UpsertRecordsRequest,
+        projectContext?: ProjectContext
+    ): Promise<UpsertRecordsResponse> {
+        const namespaceValue = namespace || '__default__';
+        const encoded = encodeURIComponent(namespaceValue);
+        return this.client.request<UpsertRecordsResponse>('POST', `/records/namespaces/${encoded}/upsert`, {
+            host: normalizeHost(host),
+            body: request,
+            projectContext
+        });
+    }
+
+    /**
+     * Fetches vectors by IDs.
+     */
+    async fetchVectors(
+        host: string,
+        ids: string[],
+        namespace?: string,
+        projectContext?: ProjectContext
+    ): Promise<FetchVectorsResponse> {
+        const queryParams: Record<string, string | string[]> = {
+            ids
+        };
+        if (namespace) {
+            queryParams.namespace = namespace;
+        }
+        return this.client.request<FetchVectorsResponse>('GET', '/vectors/fetch', {
+            host: normalizeHost(host),
+            queryParams,
+            projectContext
+        });
+    }
+
+    /**
+     * Fetches vectors by metadata filter.
+     */
+    async fetchVectorsByMetadata(
+        host: string,
+        request: FetchVectorsByMetadataRequest,
+        projectContext?: ProjectContext
+    ): Promise<FetchVectorsByMetadataResponse> {
+        return this.client.request<FetchVectorsByMetadataResponse>('POST', '/vectors/fetch_by_metadata', {
+            host: normalizeHost(host),
+            body: request,
+            projectContext
+        });
+    }
+
+    /**
+     * Updates one vector by ID.
+     */
+    async updateVector(
+        host: string,
+        request: UpdateVectorRequest,
+        projectContext?: ProjectContext
+    ): Promise<void> {
+        await this.client.request<void>('POST', '/vectors/update', {
+            host: normalizeHost(host),
+            body: request,
+            projectContext
+        });
+    }
+
+    /**
+     * Updates metadata for vectors matching a filter.
+     */
+    async updateVectorsByMetadata(
+        host: string,
+        request: UpdateVectorsByMetadataRequest,
+        projectContext?: ProjectContext
+    ): Promise<UpdateVectorsByMetadataResponse> {
+        return this.client.request<UpdateVectorsByMetadataResponse>('POST', '/vectors/update_by_metadata', {
+            host: normalizeHost(host),
+            body: request,
+            projectContext
+        });
+    }
+
+    /**
+     * Deletes vectors from an index namespace.
+     */
+    async deleteVectors(
+        host: string,
+        request: DeleteVectorsRequest,
+        projectContext?: ProjectContext
+    ): Promise<void> {
+        await this.client.request<void>('POST', '/vectors/delete', {
+            host: normalizeHost(host),
+            body: request,
+            projectContext
+        });
+    }
+
+    /**
+     * Lists vector IDs with optional prefix and pagination token.
+     */
+    async listVectorIds(
+        host: string,
+        namespace?: string,
+        prefix?: string,
+        limit?: number,
+        paginationToken?: string,
+        projectContext?: ProjectContext
+    ): Promise<ListVectorIdsResponse> {
+        const queryParams: Record<string, string> = {};
+        if (namespace) {
+            queryParams.namespace = namespace;
+        }
+        if (prefix) {
+            queryParams.prefix = prefix;
+        }
+        if (limit !== undefined) {
+            queryParams.limit = String(limit);
+        }
+        if (paginationToken) {
+            queryParams.pagination_token = paginationToken;
+        }
+        return this.client.request<ListVectorIdsResponse>('GET', '/vectors/list', {
+            host: normalizeHost(host),
+            queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+            projectContext
+        });
+    }
+
+    /**
+     * Starts a data import job.
+     */
+    async startImport(
+        host: string,
+        request: StartImportRequest,
+        projectContext?: ProjectContext
+    ): Promise<StartImportResponse> {
+        return this.client.request<StartImportResponse>('POST', '/imports', {
+            host: normalizeHost(host),
+            body: request,
+            projectContext
+        });
+    }
+
+    /**
+     * Lists import jobs.
+     */
+    async listImports(
+        host: string,
+        limit?: number,
+        paginationToken?: string,
+        projectContext?: ProjectContext
+    ): Promise<ListImportsResponse> {
+        const queryParams: Record<string, string> = {};
+        if (limit !== undefined) {
+            queryParams.limit = String(limit);
+        }
+        if (paginationToken) {
+            queryParams.pagination_token = paginationToken;
+        }
+
+        return this.client.request<ListImportsResponse>('GET', '/imports', {
+            host: normalizeHost(host),
+            queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+            projectContext
+        });
+    }
+
+    /**
+     * Describes one import job.
+     */
+    async describeImport(
+        host: string,
+        importId: string,
+        projectContext?: ProjectContext
+    ): Promise<ImportJob> {
+        const encodedId = encodeURIComponent(importId);
+        return this.client.request<ImportJob>('GET', `/imports/${encodedId}`, {
+            host: normalizeHost(host),
+            projectContext
+        });
+    }
+
+    /**
+     * Cancels one import job.
+     */
+    async cancelImport(
+        host: string,
+        importId: string,
+        projectContext?: ProjectContext
+    ): Promise<void> {
+        const encodedId = encodeURIComponent(importId);
+        await this.client.request<void>('POST', `/imports/${encodedId}/cancel`, {
+            host: normalizeHost(host),
             projectContext
         });
     }

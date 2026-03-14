@@ -17,6 +17,7 @@ import {
     ListNamespacesResponse, 
     CreateNamespaceParams 
 } from './types';
+import { normalizeHost } from './host';
 
 /**
  * Parameters for listing namespaces with pagination and filtering.
@@ -102,7 +103,7 @@ export class NamespaceApi {
         }
 
         return this.client.request<ListNamespacesResponse>('GET', '/namespaces', {
-            host: `https://${host}`,
+            host: normalizeHost(host),
             queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
             projectContext
         });
@@ -142,7 +143,7 @@ export class NamespaceApi {
         projectContext?: ProjectContext
     ): Promise<NamespaceDescription> {
         return this.client.request<NamespaceDescription>('POST', '/namespaces', {
-            host: `https://${host}`,
+            host: normalizeHost(host),
             body: params,
             projectContext
         });
@@ -178,7 +179,7 @@ export class NamespaceApi {
         return this.client.request<NamespaceDescription>(
             'GET', 
             `/namespaces/${encodedName}`,
-            { host: `https://${host}`, projectContext }
+            { host: normalizeHost(host), projectContext }
         );
     }
 
@@ -211,7 +212,7 @@ export class NamespaceApi {
         return this.client.request<void>(
             'DELETE', 
             `/namespaces/${encodedName}`,
-            { host: `https://${host}`, projectContext }
+            { host: normalizeHost(host), projectContext }
         );
     }
 }

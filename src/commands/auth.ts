@@ -37,6 +37,10 @@ export class AuthCommands {
                 vscode.window.showErrorMessage(
                     'Login failed: Callback port is in use. Please close any other Pinecone login attempts and try again.'
                 );
+            } else if (message.toLowerCase().includes('timed out')) {
+                vscode.window.showErrorMessage(
+                    'Login timed out before callback was received. Please try again and complete browser authentication within 5 minutes.'
+                );
             } else {
                 vscode.window.showErrorMessage(`Login failed: ${message}`);
             }

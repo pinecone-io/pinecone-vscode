@@ -64,6 +64,9 @@ suite('Commands Test Suite', () => {
         assert.ok(commands.includes('pinecone.createAssistant'), 'createAssistant command should be registered');
         assert.ok(commands.includes('pinecone.deleteAssistant'), 'deleteAssistant command should be registered');
         assert.ok(commands.includes('pinecone.chatWithAssistant'), 'chatWithAssistant command should be registered');
+        assert.ok(commands.includes('pinecone.updateAssistant'), 'updateAssistant command should be registered');
+        assert.ok(commands.includes('pinecone.retrieveAssistantContext'), 'retrieveAssistantContext command should be registered');
+        assert.ok(commands.includes('pinecone.evaluateAssistantAnswer'), 'evaluateAssistantAnswer command should be registered');
     });
 
     test('File commands should be registered', async () => {
@@ -71,6 +74,7 @@ suite('Commands Test Suite', () => {
         
         assert.ok(commands.includes('pinecone.uploadFiles'), 'uploadFiles command should be registered');
         assert.ok(commands.includes('pinecone.deleteFile'), 'deleteFile command should be registered');
+        assert.ok(commands.includes('pinecone.viewFileDetails'), 'viewFileDetails command should be registered');
     });
 
     test('Utility commands should be registered', async () => {
@@ -157,5 +161,87 @@ suite('Menus Test Suite', () => {
         
         const menus = ext.packageJSON.contributes.menus;
         assert.ok(menus.commandPalette, 'Command palette menus should be defined');
+    });
+
+    test('Index context menu order should match expected workflow', () => {
+        const ext = vscode.extensions.getExtension('pinecone.pinecone-vscode');
+        assert.ok(ext);
+
+        const contextMenus = ext.packageJSON.contributes.menus['view/item/context'] as Array<{
+            command: string;
+            when: string;
+            group: string;
+        }>;
+        const forIndex = contextMenus.filter(item =>
+            item.when.includes('viewItem == index') &&
+            !item.when.includes('viewItem == backup') &&
+            !item.when.includes('viewItem == backups-category')
+        );
+
+        const expectedGroups: Record<string, string> = {
+            'pinecone.queryIndex': '1_indexActions@1',
+            'pinecone.openDataOps': '1_indexActions@2',
+            'pinecone.indexStats': '1_indexActions@3',
+            'pinecone.configureIndex': '2_indexManage',
+            'pinecone.deleteIndex': '3_indexDelete'
+        };
+
+        for (const [command, group] of Object.entries(expectedGroups)) {
+            const menuEntry = forIndex.find(item => item.command === command);
+            assert.ok(menuEntry, `${command} should appear in index context menu`);
+            assert.strictEqual(menuEntry.group, group, `${command} should be in group ${group}`);
+        }
+
+        const disallowed = ['pinecone.createBackup', 'pinecone.viewBackups', 'pinecone.restoreBackup', 'pinecone.deleteBackup', 'pinecone.addTags'];
+        for (const command of disallowed) {
+            const menuEntry = forIndex.find(item => item.command === command);
+            assert.strictEqual(menuEntry, undefined, `${command} should not appear in index context menu`);
+        }
+    });
+
+    test('Assistant context menu order should match expected workflow', () => {
+        const ext = vscode.extensions.getExtension('pinecone.pinecone-vscode');
+        assert.ok(ext);
+
+        const contextMenus = ext.packageJSON.contributes.menus['view/item/context'] as Array<{
+            command: string;
+            when: string;
+            group: string;
+        }>;
+        const forAssistant = contextMenus.filter(item => item.when.includes('viewItem == assistant'));
+
+        const expectedGroups: Record<string, string> = {
+            'pinecone.chatWithAssistant': '1_assistantActions@1',
+            'pinecone.retrieveAssistantContext': '1_assistantActions@2',
+            'pinecone.evaluateAssistantAnswer': '1_assistantActions@3',
+            'pinecone.updateAssistant': '2_assistantManage',
+            'pinecone.deleteAssistant': '3_assistantDelete'
+        };
+
+        for (const [command, group] of Object.entries(expectedGroups)) {
+            const menuEntry = forAssistant.find(item => item.command === command);
+            assert.ok(menuEntry, `${command} should appear in assistant context menu`);
+            assert.strictEqual(menuEntry.group, group, `${command} should be in group ${group}`);
+        }
+    });
+
+    test('File context menu should include View Details before Delete', () => {
+        const ext = vscode.extensions.getExtension('pinecone.pinecone-vscode');
+        assert.ok(ext);
+
+        const contextMenus = ext.packageJSON.contributes.menus['view/item/context'] as Array<{
+            command: string;
+            when: string;
+            group: string;
+        }>;
+        const forFile = contextMenus.filter(item => item.when.includes('viewItem == file'));
+
+        const viewDetails = forFile.find(item => item.command === 'pinecone.viewFileDetails');
+        assert.ok(viewDetails, 'pinecone.viewFileDetails should appear in file context menu');
+        assert.strictEqual(viewDetails?.group, '1_info');
+
+        const deleteFile = forFile.find(item => item.command === 'pinecone.deleteFile');
+        assert.ok(deleteFile, 'pinecone.deleteFile should appear in file context menu');
+        assert.strictEqual(deleteFile?.group, '2_delete');
     });
 });

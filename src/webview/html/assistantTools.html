@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Assistant Tools</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2><span id="mode-title">${modeTitle}</span>: <span id="assistant-name">${assistantName}</span></h2>
+        </div>
+
+        <section class="card" id="update-section" data-mode="update">
+            <h3>Update Assistant</h3>
+            <label for="instructions">Assistant Instructions</label>
+            <textarea id="instructions" rows="4" placeholder="Assistant instructions"></textarea>
+            <label for="assistant-metadata">Assistant Metadata (JSON)</label>
+            <textarea id="assistant-metadata" rows="2" placeholder='{"team":"support"}'></textarea>
+            <button data-action="updateAssistant">Update Assistant</button>
+            <div id="result-updateAssistant" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="context-section" data-mode="context">
+            <h3>Retrieve Context</h3>
+            <textarea id="context-query" rows="2" placeholder="Question to retrieve context for"></textarea>
+            <input id="context-topk" type="number" min="1" placeholder="Top K (optional)">
+            <textarea id="context-filter" rows="2" placeholder='{"category":{"$eq":"docs"}}'></textarea>
+            <button data-action="retrieveContext">Retrieve Context</button>
+            <div id="result-retrieveContext" class="section-result hidden"></div>
+        </section>
+
+        <section class="card" id="evaluate-section" data-mode="evaluate">
+            <h3>Evaluate Answer</h3>
+            <p class="hint">
+                Enter the question, the assistant answer, and the expected ground truth answer.
+                See <a href="https://docs.pinecone.io/reference/api/assistant/introduction" target="_blank" rel="noopener noreferrer">Assistant API docs</a>.
+            </p>
+            <textarea id="eval-question" rows="2" placeholder="Question"></textarea>
+            <textarea id="eval-answer" rows="4" placeholder="Answer to evaluate"></textarea>
+            <textarea id="eval-ground-truth" rows="4" placeholder="Ground truth answer"></textarea>
+            <button data-action="evaluateAnswer">Evaluate Answer</button>
+            <div id="result-evaluateAnswer" class="section-result hidden"></div>
+        </section>
+
+        <div id="error" class="error hidden"></div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

@@ -14,7 +14,8 @@ import { PineconeService } from '../services/pineconeService';
 import { QueryParams, SearchParams } from '../api/dataPlane';
 import { IndexEmbedConfig } from '../api/types';
 import { ProjectContext } from '../api/client';
-import { getErrorMessage } from '../utils/errorHandling';
+import { classifyError } from '../utils/errorHandling';
+import { parseOptionalJsonObject } from '../utils/inputValidation';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -34,6 +35,14 @@ interface QueryFormParams {
     filterStr?: string;
     includeValues?: boolean;
     includeMetadata?: boolean;
+    fieldsStr?: string;
+}
+
+interface QueryPanelMessage {
+    command: string;
+    params?: QueryFormParams;
+    text?: string;
+    copyId?: string;
 }
 
 /**
@@ -46,12 +55,15 @@ interface QueryFormParams {
  * - ID lookup, filtering, and namespaces
  */
 export class QueryPanel {
-    public static currentPanel: QueryPanel | undefined;
+    private static readonly _panelsByKey = new Map<string, QueryPanel>();
+
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;
     private _disposables: vscode.Disposable[] = [];
     private _indexName: string = '';
     private _indexHost: string = '';
+    private readonly _panelKey: string;
+    private _isDisposed = false;
     /** Integrated embedding config (if the index uses hosted embeddings) */
     private _embedConfig: IndexEmbedConfig | undefined;
     /** Project context for API authentication (required for JWT auth) */
@@ -81,11 +93,11 @@ export class QueryPanel {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
-
-        // Reuse existing panel if available
-        if (QueryPanel.currentPanel) {
-            QueryPanel.currentPanel._panel.reveal(column);
-            QueryPanel.currentPanel.setIndex(indexName, indexHost, embedConfig, projectContext);
+        const panelKey = QueryPanel.getPanelKey(indexHost, projectContext);
+        const existing = QueryPanel._panelsByKey.get(panelKey);
+        if (existing) {
+            existing._panel.reveal(column || vscode.ViewColumn.One);
+            existing.setIndex(indexName, indexHost, embedConfig, projectContext);
             return;
         }
 
@@ -100,7 +112,16 @@ export class QueryPanel {
             }
         );
 
-        QueryPanel.currentPanel = new QueryPanel(panel, extensionUri, pineconeService, indexName, indexHost, embedConfig, projectContext);
+        new QueryPanel(
+            panel,
+            extensionUri,
+            pineconeService,
+            indexName,
+            indexHost,
+            embedConfig,
+            projectContext,
+            panelKey
+        );
     }
 
     /**
@@ -113,7 +134,8 @@ export class QueryPanel {
         indexName: string,
         indexHost: string,
         embedConfig?: IndexEmbedConfig,
-        projectContext?: ProjectContext
+        projectContext?: ProjectContext,
+        panelKey?: string
     ) {
         this._panel = panel;
         this._extensionUri = extensionUri;
@@ -121,13 +143,15 @@ export class QueryPanel {
         this._indexHost = indexHost;
         this._embedConfig = embedConfig;
         this._projectContext = projectContext;
+        this._panelKey = panelKey || QueryPanel.getPanelKey(indexHost, projectContext);
+        QueryPanel._panelsByKey.set(this._panelKey, this);
 
         this._update();
 
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
         this._panel.webview.onDidReceiveMessage(
-            async (message: { command: string; params?: QueryFormParams }) => {
+            async (message: QueryPanelMessage) => {
                 switch (message.command) {
                     case 'ready':
                         // Send index configuration to webview
@@ -144,6 +168,9 @@ export class QueryPanel {
                         return;
                     case 'requestLogin':
                         vscode.commands.executeCommand('pinecone.login');
+                        return;
+                    case 'copyToClipboard':
+                        await this.copyTextToClipboard(message.text, message.copyId);
                         return;
                 }
             },
@@ -178,7 +205,11 @@ export class QueryPanel {
      * Disposes of the panel and cleans up resources.
      */
     public dispose(): void {
-        QueryPanel.currentPanel = undefined;
+        if (this._isDisposed) {
+            return;
+        }
+        this._isDisposed = true;
+        QueryPanel._panelsByKey.delete(this._panelKey);
         this._panel.dispose();
         while (this._disposables.length) {
             const disposable = this._disposables.pop();
@@ -236,6 +267,28 @@ export class QueryPanel {
         return text;
     }
 
+    private static getPanelKey(indexHost: string, projectContext?: ProjectContext): string {
+        const host = String(indexHost || '').trim().toLowerCase();
+        const project = String(projectContext?.id || '').trim().toLowerCase();
+        return `${project || 'global'}::${host}`;
+    }
+
+    private async copyTextToClipboard(text: string | undefined, copyId: string | undefined): Promise<void> {
+        if (!copyId) {
+            return;
+        }
+        try {
+            await vscode.env.clipboard.writeText(String(text || ''));
+            await this._panel.webview.postMessage({ command: 'copied', copyId });
+        } catch {
+            await this._panel.webview.postMessage({
+                command: 'copyError',
+                copyId,
+                message: 'Failed to copy text to clipboard.'
+            });
+        }
+    }
+
     /**
      * Handles query requests from the webview.
      * 
@@ -247,39 +300,43 @@ export class QueryPanel {
     private async handleQuery(params: QueryFormParams): Promise<void> {
         try {
             // Parse filter JSON (used by both query types)
-            let filter: Record<string, unknown> | undefined;
-            if (params.filterStr && params.filterStr.trim()) {
-                try {
-                    filter = JSON.parse(params.filterStr);
-                } catch (e: unknown) {
-                    this._panel.webview.postMessage({ 
-                        command: 'error', 
-                        message: 'Invalid filter JSON. Please check the syntax.' 
-                    });
-                    return;
-                }
+            const parsedFilter = parseOptionalJsonObject(
+                params.filterStr,
+                'Invalid filter JSON. Please check the syntax.'
+            );
+            if (parsedFilter.error) {
+                this._panel.webview.postMessage({
+                    command: 'error',
+                    message: parsedFilter.error
+                });
+                return;
             }
+            const filter = parsedFilter.value;
 
             const topK = parseInt(params.topK || '10', 10) || 10;
+            const fields = (params.fieldsStr || '')
+                .split(',')
+                .map(v => v.trim())
+                .filter(Boolean);
 
             // Check if this is a text-based search (integrated embeddings)
             // Note: includeValues is NOT passed to text search - the /records/search
             // endpoint doesn't support it (only the /query endpoint does)
             if (params.textQuery && params.textQuery.trim() && this._embedConfig) {
-                await this.handleTextSearch(params.textQuery.trim(), topK, params.namespace, filter);
+                await this.handleTextSearch(params.textQuery.trim(), topK, params.namespace, filter, fields);
             } else {
                 // Standard vector-based query
                 await this.handleVectorQuery(params, topK, filter);
             }
             
         } catch (e: unknown) {
-            const message = getErrorMessage(e);
+            const classified = classifyError(e);
             
             // Check if this is an authentication error
-            if (this.isAuthError(message)) {
+            if (classified.requiresLogin) {
                 this._panel.webview.postMessage({ command: 'authExpired' });
             } else {
-                this._panel.webview.postMessage({ command: 'error', message });
+                this._panel.webview.postMessage({ command: 'error', message: classified.userMessage });
             }
         }
     }
@@ -299,7 +356,8 @@ export class QueryPanel {
         text: string, 
         topK: number, 
         namespace?: string, 
-        filter?: Record<string, unknown>
+        filter?: Record<string, unknown>,
+        fields?: string[]
     ): Promise<void> {
         // Build search params following the SearchRecordsRequest schema:
         // - query.inputs.text for text search
@@ -312,7 +370,8 @@ export class QueryPanel {
                 top_k: topK,
                 filter  // Filter is inside query object per API spec
             },
-            namespace: namespace || ''  // Default namespace is empty string
+            namespace: namespace || '',  // Default namespace is empty string
+            fields: fields && fields.length > 0 ? fields : undefined
         };
 
         const result = await this.pineconeService.getDataPlane().search(this._indexHost, searchParams, this._projectContext);
@@ -374,17 +433,5 @@ export class QueryPanel {
         // Execute query
         const result = await this.pineconeService.getDataPlane().query(this._indexHost, queryParams, this._projectContext);
         this._panel.webview.postMessage({ command: 'result', data: result });
-    }
-
-    /**
-     * Checks if an error message indicates an authentication problem.
-     */
-    private isAuthError(message: string): boolean {
-        const lowerMessage = message.toLowerCase();
-        return lowerMessage.includes('401') ||
-               lowerMessage.includes('unauthorized') ||
-               lowerMessage.includes('token expired') ||
-               lowerMessage.includes('authentication failed') ||
-               lowerMessage.includes('not authenticated');
     }
 }

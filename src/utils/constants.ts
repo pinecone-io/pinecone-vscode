@@ -94,14 +94,14 @@ export function getApiBaseUrl(environment: 'production' | 'staging' = 'productio
  * API features and response formats are available.
  * 
  * **Version History:**
- * - 2025-04: Current version used by this extension
+ * - 2025-10: Current version used by this extension
  * 
  * **Important:** When updating this version, ensure all API response types
  * in `types.ts` are updated to match the new schema.
  * 
  * @see https://docs.pinecone.io/reference/api/versioning
  */
-export const API_VERSION = '2025-04';
+export const API_VERSION = '2025-10';
 
 // ============================================================================
 // Assistant Models Configuration
@@ -276,6 +276,12 @@ export const EXTENSION_ID = 'pinecone.pinecone-vscode';
  * Must match the port in redirectUri.
  */
 export const OAUTH_CALLBACK_PORT = 59049;
+
+/**
+ * Maximum time to wait for OAuth callback completion.
+ * If the browser flow is not completed within this window, login is aborted.
+ */
+export const OAUTH_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 // ============================================================================
 // Polling Configuration

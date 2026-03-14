@@ -12,7 +12,7 @@
  * 2. Show interactive wizard for user input
  * 3. Call PineconeService API method
  * 4. Show success/error message
- * 5. Refresh tree view (triple-refresh pattern for reliability)
+ * 5. Refresh tree view via shared refreshExplorer() helper
  * 
  * ## Error Handling
  * 
@@ -30,6 +30,7 @@ import { IndexModel, ServerlessSpec, PodSpec, RestoreJob, CreateIndexForModelReq
 import { CLOUD_REGIONS, EMBEDDING_MODELS, POLLING_CONFIG } from '../utils/constants';
 import { getErrorMessage } from '../utils/errorHandling';
 import { buildProjectContextFromItem, setProjectContextFromItem } from '../utils/treeItemHelpers';
+import { refreshExplorer } from '../utils/refreshExplorer';
 
 /**
  * Handles all index-related commands in the extension.
@@ -47,16 +48,9 @@ export class IndexCommands {
     constructor(
         private pineconeService: PineconeService,
         private treeDataProvider: PineconeTreeDataProvider,
-        private treeView?: vscode.TreeView<PineconeTreeItem>
+        private treeView?: vscode.TreeView<PineconeTreeItem>,
+        private extensionUri?: vscode.Uri
     ) {}
-    
-    /**
-     * Refreshes the tree view after an operation.
-     * Direct call to avoid issues with command execution timing.
-     */
-    private refreshTree(): void {
-        this.treeDataProvider.refresh();
-    }
 
     /**
      * Creates a new serverless index using an interactive wizard.
@@ -76,53 +70,18 @@ export class IndexCommands {
      */
     async createIndex(item?: PineconeTreeItem): Promise<void> {
         // Set project context from tree item if available (for JWT auth)
-        // Uses full project context when available for managed API key authentication
         if (item) {
             setProjectContextFromItem(item, this.pineconeService);
         }
 
-        // ========== Step 1: Get index name ==========
-        const name = await vscode.window.showInputBox({
-            prompt: 'Enter index name',
-            placeHolder: 'my-index',
-            validateInput: (value) => {
-                if (!value) { return 'Name is required'; }
-                if (!/^[a-z0-9-]+$/.test(value)) {
-                    return 'Name must consist of lowercase alphanumeric characters or hyphens';
-                }
-                if (value.length > 45) {
-                    return 'Name must be 45 characters or less';
-                }
-                return null;
-            }
-        });
-        if (!name) { return; }
-
-        // ========== Step 2: Integrated embeddings or standard? ==========
-        const indexType = await vscode.window.showQuickPick(
-            [
-                { 
-                    label: '$(sparkle) Integrated Embeddings', 
-                    description: 'Pinecone converts text to vectors automatically',
-                    value: 'integrated' 
-                },
-                { 
-                    label: '$(symbol-array) Bring Your Own Vectors', 
-                    description: 'Provide your own embeddings',
-                    value: 'standard' 
-                }
-            ],
-            { placeHolder: 'How will you create vectors?' }
+        const projectContext = item ? buildProjectContextFromItem(item) : undefined;
+        const { CreateIndexPanel } = await import('../webview/createIndexPanel.js');
+        CreateIndexPanel.createOrShow(
+            this.extensionUri || vscode.Uri.file(''),
+            this.pineconeService,
+            this.treeDataProvider,
+            projectContext
         );
-        if (!indexType) { return; }
-
-        if (indexType.value === 'integrated') {
-            // Create index with integrated embeddings
-            await this.createIntegratedEmbeddingIndex(name);
-        } else {
-            // Create standard index (dense or sparse)
-            await this.createStandardIndex(name);
-        }
     }
 
     /**
@@ -264,13 +223,8 @@ export class IndexCommands {
             });
             
             vscode.window.showInformationMessage(`Index "${name}" created successfully`);
-            
-            // Refresh after index is ready using triple-refresh approach
-            setTimeout(async () => {
-                this.treeDataProvider.refresh();
-                await vscode.commands.executeCommand('pinecone.refresh');
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to create index: ${message}`);
@@ -430,13 +384,8 @@ export class IndexCommands {
             });
             
             vscode.window.showInformationMessage(`Index "${name}" created successfully`);
-            
-            // Refresh after index is ready using triple-refresh approach
-            setTimeout(async () => {
-                this.treeDataProvider.refresh();
-                await vscode.commands.executeCommand('pinecone.refresh');
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to create index: ${message}`);
@@ -501,7 +450,11 @@ export class IndexCommands {
                 try {
                     await this.pineconeService.configureIndex(name, { deletion_protection: 'disabled' });
                     vscode.window.showInformationMessage('Deletion protection disabled. Please try deleting again.');
-                    vscode.commands.executeCommand('pinecone.refresh');
+                    void refreshExplorer({
+                        treeDataProvider: this.treeDataProvider,
+                        delayMs: 0,
+                        focusExplorer: false
+                    });
                 } catch (e: unknown) {
                     const message = getErrorMessage(e);
                     vscode.window.showErrorMessage(`Failed to disable protection: ${message}`);
@@ -544,18 +497,7 @@ export class IndexCommands {
             return; // Don't refresh on error
         }
         
-        // Refresh after successful deletion using triple-refresh approach
-        // This ensures the tree view updates in Cursor IDE
-        setTimeout(async () => {
-            // Approach 1: Direct call to treeDataProvider
-            this.treeDataProvider.refresh();
-            
-            // Approach 2: Execute refresh command
-            await vscode.commands.executeCommand('pinecone.refresh');
-            
-            // Approach 3: Focus on the explorer to force UI update
-            await vscode.commands.executeCommand('pineconeExplorer.focus');
-        }, POLLING_CONFIG.REFRESH_DELAY_MS);
+        void refreshExplorer({ treeDataProvider: this.treeDataProvider });
     }
 
     /**
@@ -574,52 +516,16 @@ export class IndexCommands {
      */
     async configureIndex(item: PineconeTreeItem): Promise<void> {
         if (!item.resourceId) { return; }
-        const name = item.resourceId;
-        const index = item.metadata?.index as IndexModel | undefined;
-
-        // Set project context from tree item for JWT authentication
-        // Uses full project context when available for managed API key authentication
         setProjectContextFromItem(item, this.pineconeService);
-
-        // Show configuration options
-        const options = [
-            { 
-                label: '$(shield) Toggle Deletion Protection', 
-                description: index?.deletion_protection === 'enabled' ? 'Currently: Enabled' : 'Currently: Disabled',
-                action: 'deletion_protection'
-            },
-            { 
-                label: '$(tag) Update Tags', 
-                description: 'Add or modify index tags',
-                action: 'tags'
-            }
-        ];
-
-        // Add pod-specific options
-        if (index?.spec && 'pod' in index.spec) {
-            options.push({
-                label: '$(server) Update Replicas',
-                description: `Currently: ${index.spec.pod.replicas} replicas`,
-                action: 'replicas'
-            });
-        }
-
-        const selection = await vscode.window.showQuickPick(options, {
-            placeHolder: `Configure index "${name}"`
-        });
-        if (!selection) { return; }
-
-        switch (selection.action) {
-            case 'deletion_protection':
-                await this.toggleDeletionProtection(name, index);
-                break;
-            case 'tags':
-                await this.addTags(item);
-                break;
-            case 'replicas':
-                await this.updateReplicas(name, index);
-                break;
-        }
+        const projectContext = buildProjectContextFromItem(item);
+        const { ConfigureIndexPanel } = await import('../webview/configureIndexPanel.js');
+        ConfigureIndexPanel.createOrShow(
+            this.extensionUri || vscode.Uri.file(''),
+            this.pineconeService,
+            this.treeDataProvider,
+            item.resourceId,
+            projectContext
+        );
     }
 
     /**
@@ -640,7 +546,11 @@ export class IndexCommands {
             try {
                 await this.pineconeService.configureIndex(name, { deletion_protection: newState });
                 vscode.window.showInformationMessage(`Deletion protection ${newState} for "${name}"`);
-                vscode.commands.executeCommand('pinecone.refresh');
+                void refreshExplorer({
+                    treeDataProvider: this.treeDataProvider,
+                    delayMs: 0,
+                    focusExplorer: false
+                });
             } catch (e: unknown) {
                 const message = getErrorMessage(e);
                 vscode.window.showErrorMessage(`Failed to update deletion protection: ${message}`);
@@ -683,7 +593,11 @@ export class IndexCommands {
                 });
             });
             vscode.window.showInformationMessage(`Replicas updated to ${replicas} for "${name}"`);
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({
+                treeDataProvider: this.treeDataProvider,
+                delayMs: 0,
+                focusExplorer: false
+            });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to update replicas: ${message}`);
@@ -700,48 +614,7 @@ export class IndexCommands {
      * @param item - Tree item representing the index
      */
     async addTags(item: PineconeTreeItem): Promise<void> {
-        if (!item.resourceId) { return; }
-        const name = item.resourceId;
-        const index = item.metadata?.index as IndexModel | undefined;
-
-        // Set project context from tree item for JWT authentication
-        // Uses full project context when available for managed API key authentication
-        setProjectContextFromItem(item, this.pineconeService);
-        
-        // Show current tags as default value
-        const currentTags = index?.tags || {};
-        const currentTagsStr = Object.entries(currentTags)
-            .map(([k, v]) => `${k}=${v}`)
-            .join(', ');
-        
-        const tagsStr = await vscode.window.showInputBox({
-            prompt: 'Enter tags as key=value pairs separated by comma',
-            placeHolder: 'env=prod, team=ml, owner=john',
-            value: currentTagsStr
-        });
-        if (tagsStr === undefined) { return; } // User cancelled
-        
-        // Parse tags (empty string clears all tags)
-        const tags: Record<string, string> = {};
-        if (tagsStr.trim()) {
-            tagsStr.split(',').forEach(pair => {
-                const [key, value] = pair.split('=').map(s => s.trim());
-                if (key) {tags[key] = value || '';}
-            });
-        }
-
-        try {
-            await this.pineconeService.configureIndex(name, { tags });
-            vscode.window.showInformationMessage(
-                Object.keys(tags).length > 0 
-                    ? `Tags updated for "${name}"` 
-                    : `Tags cleared for "${name}"`
-            );
-            vscode.commands.executeCommand('pinecone.refresh');
-        } catch (e: unknown) {
-            const message = getErrorMessage(e);
-            vscode.window.showErrorMessage(`Failed to update tags: ${message}`);
-        }
+        await this.configureIndex(item);
     }
 
     /**
@@ -828,13 +701,8 @@ export class IndexCommands {
             });
             
             vscode.window.showInformationMessage(`Backup "${backupName}" created successfully`);
-            
-            // Refresh after backup completion using triple-refresh approach
-            setTimeout(async () => {
-                this.treeDataProvider.refresh();
-                await vscode.commands.executeCommand('pinecone.refresh');
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to create backup: ${message}`);
@@ -1155,13 +1023,8 @@ export class IndexCommands {
             });
 
             vscode.window.showInformationMessage(`Index "${newIndexName}" restored successfully`);
-            
-            // Refresh after completion using triple-refresh approach
-            setTimeout(async () => {
-                this.treeDataProvider.refresh();
-                await vscode.commands.executeCommand('pinecone.refresh');
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
 
         } catch (e: unknown) {
             const message = getErrorMessage(e);
@@ -1290,19 +1153,8 @@ export class IndexCommands {
             });
 
             vscode.window.showInformationMessage(`Backup "${backupToDelete.name}" deleted successfully`);
-            
-            // Refresh after successful deletion using triple-refresh approach
-            // This ensures the tree view updates in Cursor IDE
-            setTimeout(async () => {
-                // Approach 1: Direct call to treeDataProvider
-                this.treeDataProvider.refresh();
-                
-                // Approach 2: Execute refresh command
-                await vscode.commands.executeCommand('pinecone.refresh');
-                
-                // Approach 3: Focus on the explorer to force UI update
-                await vscode.commands.executeCommand('pineconeExplorer.focus');
-            }, POLLING_CONFIG.REFRESH_DELAY_MS);
+
+            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
 
         } catch (e: unknown) {
             const message = getErrorMessage(e);

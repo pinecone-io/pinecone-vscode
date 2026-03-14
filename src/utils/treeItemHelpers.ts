@@ -73,34 +73,6 @@ export function extractProjectId(item: PineconeTreeItem): string | undefined {
 }
 
 /**
- * Extracts the resource name from a composite parent ID.
- * 
- * For composite IDs in the format "projectId:resourceName", this
- * extracts the resourceName portion.
- * 
- * @param parentId - The composite parent ID
- * @returns The resource name portion, or undefined if not composite
- * 
- * @example
- * ```typescript
- * extractResourceFromParentId("proj-123:my-index"); // Returns "my-index"
- * extractResourceFromParentId("proj-123"); // Returns undefined
- * ```
- */
-export function extractResourceFromParentId(parentId: string | undefined): string | undefined {
-    if (!parentId) {
-        return undefined;
-    }
-
-    const colonIndex = parentId.indexOf(':');
-    if (colonIndex > 0 && colonIndex < parentId.length - 1) {
-        return parentId.substring(colonIndex + 1);
-    }
-
-    return undefined;
-}
-
-/**
  * Builds a full ProjectContext object from a tree item.
  * 
  * ProjectContext is required for API calls when using JWT authentication
@@ -177,8 +149,9 @@ export function setProjectContextFromItem(
     }
 ): void {
     const project = item.metadata?.project as Project | undefined;
+    const organization = item.metadata?.organization as Organization | undefined;
     const projectId = extractProjectId(item);
-    const organizationId = project?.organization_id;
+    const organizationId = organization?.id || project?.organization_id;
 
     if (projectId && project?.name && organizationId) {
         // Full context available - use managed API key authentication
@@ -187,56 +160,4 @@ export function setProjectContextFromItem(
         // Only project ID available - fall back to Bearer token + X-Project-Id
         service.setProjectId(projectId);
     }
-}
-
-/**
- * Builds a unique ID for a tree item by combining parent ID, type, and resource ID.
- * 
- * This ensures tree items have stable, unique identifiers that encode their
- * position in the hierarchy. Unique IDs are important for:
- * 1. Proper expansion/collapse state tracking
- * 2. Avoiding duplicate rendering issues
- * 3. Reliable refresh targeting
- * 
- * @param parentId - The parent item's ID (or undefined for root items)
- * @param itemType - The type of this item
- * @param resourceId - The resource-specific identifier (e.g., index name)
- * @param label - Fallback label if no resourceId
- * @returns A unique identifier string
- * 
- * @example
- * ```typescript
- * buildUniqueId('proj-123', 'index', 'my-index', 'my-index');
- * // Returns "proj-123:index:my-index"
- * 
- * buildUniqueId(undefined, 'database-category', undefined, 'Database');
- * // Returns "database-category:Database"
- * ```
- */
-export function buildUniqueId(
-    parentId: string | undefined,
-    itemType: string,
-    resourceId: string | undefined,
-    label: string
-): string {
-    const parts: string[] = [];
-    
-    if (parentId) {
-        parts.push(parentId);
-    }
-    
-    parts.push(itemType);
-    parts.push(resourceId || label);
-    
-    return parts.join(':');
-}
-
-/**
- * Checks if a parent ID is in composite format (contains a colon).
- * 
- * @param parentId - The parent ID to check
- * @returns true if the ID is composite format
- */
-export function isCompositeId(parentId: string | undefined): boolean {
-    return !!parentId && parentId.includes(':');
 }

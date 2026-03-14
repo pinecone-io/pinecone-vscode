@@ -88,8 +88,11 @@ The project uses ESLint for linting. All linting rules are defined in `.eslintrc
 # Run all tests
 npm test
 
-# Run tests with coverage (if configured)
+# Run tests with coverage
 npm run test:coverage
+
+# Run integration smoke tests (requires env vars)
+PINECONE_API_KEY=... PINECONE_INTEGRATION_TESTS=true npm run test:integration
 ```
 
 See [docs/testing.md](docs/testing.md) for detailed testing guidance.
@@ -171,7 +174,7 @@ pinecone-vscode/
 │   ├── api/                  # Pinecone API clients
 │   │   ├── client.ts         # Base HTTP client with auth
 │   │   ├── controlPlane.ts   # Index CRUD, backups, restore jobs
-│   │   ├── dataPlane.ts      # Vector operations (query, upsert)
+│   │   ├── dataPlane.ts      # Vector operations (query, search)
 │   │   ├── assistantApi.ts   # Assistants, streaming chat, files
 │   │   ├── adminApi.ts       # Projects, organizations
 │   │   ├── namespaceApi.ts   # Namespace management
@@ -258,7 +261,12 @@ npm test
 
 # Run tests with coverage
 npm run test:coverage
+
+# Run integration smoke tests (env-gated)
+PINECONE_API_KEY=... PINECONE_INTEGRATION_TESTS=true npm run test:integration
 ```
+
+`npm run test:coverage` writes temporary V8 coverage JSON into `.coverage/` and then validates artifact presence.
 
 ### Writing Tests
 
@@ -381,7 +389,7 @@ try {
 | API | Purpose |
 |-----|---------|
 | `ControlPlaneApi` | Index CRUD, backups, restore jobs |
-| `DataPlaneApi` | Vector query, upsert, delete |
+| `DataPlaneApi` | Vector query and text search on index hosts |
 | `AssistantApi` | Assistants, chat (streaming), files |
 | `AdminApi` | Projects, organizations |
 | `NamespaceApi` | Namespace management within indexes |

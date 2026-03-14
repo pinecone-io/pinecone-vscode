@@ -10,6 +10,7 @@
  */
 
 import * as assert from 'assert';
+import { parseOptionalJsonObject } from '../../utils/inputValidation';
 
 // Use simplified types for testing (avoid strict API type requirements)
 interface MockFileModel {
@@ -150,6 +151,18 @@ suite('File Commands Behavioral Tests', () => {
 
             assert.strictEqual(results.length, 3);
             assert.ok(results.every(r => r.status === 'Processing'));
+        });
+
+        test('should apply same metadata to all files in a batch', async () => {
+            const mockApi = new MockAssistantApi();
+            const files = ['/path/to/doc1.pdf', '/path/to/doc2.txt'];
+            const metadata = { category: 'kb', source: 'batch-upload' };
+
+            for (const filePath of files) {
+                await mockApi.uploadFile('host', 'assistant', filePath, metadata);
+                assert.ok(mockApi.lastUploadCall);
+                assert.deepStrictEqual(mockApi.lastUploadCall.metadata, metadata);
+            }
         });
     });
 
@@ -299,6 +312,29 @@ suite('File Commands Behavioral Tests', () => {
             assert.strictEqual(errors.length, 3);
             assert.ok(errors.join('\n').includes('doc1.pdf'));
             assert.ok(errors.join('\n').includes('doc2.txt'));
+        });
+    });
+
+    suite('Upload Metadata Validation', () => {
+        test('should accept object metadata JSON', () => {
+            const parsed = parseOptionalJsonObject(
+                '{"team":"search","priority":1}',
+                'Invalid metadata JSON'
+            );
+            assert.deepStrictEqual(parsed.value, { team: 'search', priority: 1 });
+            assert.strictEqual(parsed.error, undefined);
+        });
+
+        test('should reject invalid metadata JSON', () => {
+            const parsed = parseOptionalJsonObject('{"team":"search"', 'Invalid metadata JSON');
+            assert.strictEqual(parsed.value, undefined);
+            assert.strictEqual(parsed.error, 'Invalid metadata JSON');
+        });
+
+        test('should reject non-object metadata JSON', () => {
+            const parsed = parseOptionalJsonObject('["not","an","object"]', 'Invalid metadata JSON');
+            assert.strictEqual(parsed.value, undefined);
+            assert.strictEqual(parsed.error, 'Invalid metadata JSON');
         });
     });
 });

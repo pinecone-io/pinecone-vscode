@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Assistant File Metadata</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Assistant File Metadata</h2>
+            <p class="hint">Set metadata per file, or set list-level metadata to apply to every file.</p>
+        </div>
+
+        <section class="card">
+            <label for="batch-metadata">List-Level Metadata (JSON, optional)</label>
+            <textarea id="batch-metadata" rows="3" placeholder='{"source":"knowledge-base","team":"support"}'></textarea>
+            <p class="hint">When this field is not empty, it applies to all files and disables per-file metadata fields.</p>
+        </section>
+
+        <section class="card">
+            <h3>Files to Upload</h3>
+            <div id="file-list"></div>
+        </section>
+
+        <div id="error" class="error hidden"></div>
+
+        <div class="actions">
+            <button id="cancel-btn" class="secondary">Cancel</button>
+            <button id="submit-btn">Upload Files</button>
+        </div>
+    </div>
+
+    <script nonce="${nonce}">
+        window.__UPLOAD_FILES__ = ${filesPayload};
+    </script>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

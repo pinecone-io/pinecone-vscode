@@ -1,0 +1,215 @@
+body {
+    padding: 20px;
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-editor-background);
+    font-family: var(--vscode-font-family);
+}
+
+.container {
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+.header {
+    margin-bottom: 12px;
+}
+
+.header h2 {
+    margin: 0;
+}
+
+.hint {
+    margin: 6px 0 0;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+}
+
+.card {
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.card h3 {
+    margin-top: 0;
+}
+
+.form-group {
+    margin-bottom: 12px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+}
+
+input:not([type="checkbox"]),
+textarea,
+select {
+    width: 100%;
+    padding: 8px;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+button {
+    width: 100%;
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: 2px;
+}
+
+button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 12px;
+    font-weight: 400;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+}
+
+.hidden {
+    display: none;
+}
+
+.error {
+    color: var(--vscode-errorForeground);
+    background-color: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+
+.section-result {
+    margin-top: 10px;
+}
+
+.results-section {
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 4px;
+    padding: 10px;
+    background-color: var(--vscode-editor-background);
+}
+
+.results-title {
+    margin: 0 0 8px;
+    font-size: 0.95em;
+    color: var(--vscode-descriptionForeground);
+}
+
+.results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.results-header .results-title {
+    margin: 0;
+}
+
+.secondary-action {
+    width: auto;
+    padding: 4px 10px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.secondary-action:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.match-item {
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 8px;
+}
+
+.match-item:last-child {
+    margin-bottom: 0;
+}
+
+.match-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.metadata-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+.metadata-table tr {
+    border-bottom: 1px solid var(--vscode-editorGroup-border);
+}
+
+.metadata-table tr:last-child {
+    border-bottom: none;
+}
+
+.metadata-key {
+    padding: 6px 10px 6px 0;
+    font-weight: 600;
+    color: var(--vscode-symbolIcon-fieldForeground);
+    vertical-align: top;
+    width: 1%;
+    white-space: nowrap;
+}
+
+.metadata-value {
+    padding: 6px 0;
+    word-break: break-word;
+}
+
+.text-content {
+    background-color: var(--vscode-textBlockQuote-background);
+    padding: 8px 10px;
+    border-radius: 3px;
+    border-left: 3px solid var(--vscode-textBlockQuote-border);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.code-block {
+    margin: 0;
+    padding: 8px;
+    border-radius: 3px;
+    background-color: var(--vscode-textCodeBlock-background);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.9em;
+}
+
+.empty-result {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}

@@ -1,0 +1,130 @@
+body {
+    padding: 20px;
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-editor-background);
+    font-family: var(--vscode-font-family);
+}
+
+.container {
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+.header {
+    margin-bottom: 12px;
+}
+
+.header h2 {
+    margin: 0;
+}
+
+.hint {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+    margin: 6px 0 0;
+}
+
+.card {
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+textarea {
+    width: 100%;
+    padding: 8px;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+.file-row {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) 2fr;
+    gap: 10px;
+    align-items: start;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--vscode-editorGroup-border);
+}
+
+.file-row:last-child {
+    border-bottom: none;
+}
+
+.file-name {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.file-path {
+    margin-top: 4px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.85em;
+    word-break: break-all;
+}
+
+.file-metadata {
+    width: 100%;
+    min-height: 70px;
+}
+
+.file-metadata:disabled {
+    opacity: 0.7;
+}
+
+.actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 8px 14px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+button.secondary {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+button.secondary:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.error {
+    color: var(--vscode-errorForeground);
+    background-color: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+
+.hidden {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .file-row {
+        grid-template-columns: 1fr;
+    }
+}

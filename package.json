@@ -158,6 +158,12 @@
         "enablement": "pinecone.isAuthenticated"
       },
       {
+        "command": "pinecone.openDataOps",
+        "title": "Data Operations",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
         "command": "pinecone.createAssistant",
         "title": "Create Assistant",
         "category": "Pinecone",
@@ -176,6 +182,24 @@
         "enablement": "pinecone.isAuthenticated"
       },
       {
+        "command": "pinecone.updateAssistant",
+        "title": "Update Assistant",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.retrieveAssistantContext",
+        "title": "Retrieve Context",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.evaluateAssistantAnswer",
+        "title": "Evaluate Answer",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
         "command": "pinecone.uploadFiles",
         "title": "Upload Files",
         "category": "Pinecone",
@@ -184,6 +208,12 @@
       {
         "command": "pinecone.deleteFile",
         "title": "Delete File",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.viewFileDetails",
+        "title": "View Details",
         "category": "Pinecone",
         "enablement": "pinecone.isAuthenticated"
       },
@@ -216,6 +246,25 @@
         "title": "Delete Project",
         "category": "Pinecone",
         "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.renameProject",
+        "title": "Rename Project",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.manageApiKeys",
+        "title": "Manage API Keys",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
+        "command": "pinecone.openInferenceToolbox",
+        "title": "Open Inference Toolbox",
+        "category": "Pinecone",
+        "icon": "$(wrench)",
+        "enablement": "pinecone.isAuthenticated"
       }
     ],
     "menus": {
@@ -226,9 +275,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "pinecone.refresh",
+          "command": "pinecone.openInferenceToolbox",
           "when": "view == pineconeExplorer && pinecone.isAuthenticated",
           "group": "navigation@2"
+        },
+        {
+          "command": "pinecone.refresh",
+          "when": "view == pineconeExplorer && pinecone.isAuthenticated",
+          "group": "navigation@2.5"
         },
         {
           "command": "pinecone.login",
@@ -250,47 +304,27 @@
         {
           "command": "pinecone.queryIndex",
           "when": "view == pineconeExplorer && (viewItem == index || viewItem == pod-index)",
-          "group": "1_query"
+          "group": "1_indexActions@1"
+        },
+        {
+          "command": "pinecone.openDataOps",
+          "when": "view == pineconeExplorer && (viewItem == index || viewItem == pod-index)",
+          "group": "1_indexActions@2"
         },
         {
           "command": "pinecone.indexStats",
           "when": "view == pineconeExplorer && (viewItem == index || viewItem == pod-index)",
-          "group": "1_query@2"
-        },
-        {
-          "command": "pinecone.createBackup",
-          "when": "view == pineconeExplorer && viewItem == index",
-          "group": "2_backup@1"
-        },
-        {
-          "command": "pinecone.viewBackups",
-          "when": "view == pineconeExplorer && viewItem == index",
-          "group": "2_backup@2"
-        },
-        {
-          "command": "pinecone.restoreBackup",
-          "when": "view == pineconeExplorer && viewItem == index",
-          "group": "2_backup@3"
-        },
-        {
-          "command": "pinecone.deleteBackup",
-          "when": "view == pineconeExplorer && viewItem == index",
-          "group": "2_backup@4"
-        },
-        {
-          "command": "pinecone.addTags",
-          "when": "view == pineconeExplorer && viewItem == index",
-          "group": "3_configure@1"
+          "group": "1_indexActions@3"
         },
         {
           "command": "pinecone.configureIndex",
           "when": "view == pineconeExplorer && viewItem == index",
-          "group": "3_configure@2"
+          "group": "2_indexManage"
         },
         {
           "command": "pinecone.deleteIndex",
           "when": "view == pineconeExplorer && (viewItem == index || viewItem == pod-index)",
-          "group": "4_delete"
+          "group": "3_indexDelete"
         },
         {
           "command": "pinecone.createAssistant",
@@ -300,12 +334,27 @@
         {
           "command": "pinecone.chatWithAssistant",
           "when": "view == pineconeExplorer && viewItem == assistant",
-          "group": "1_chat"
+          "group": "1_assistantActions@1"
+        },
+        {
+          "command": "pinecone.retrieveAssistantContext",
+          "when": "view == pineconeExplorer && viewItem == assistant",
+          "group": "1_assistantActions@2"
+        },
+        {
+          "command": "pinecone.evaluateAssistantAnswer",
+          "when": "view == pineconeExplorer && viewItem == assistant",
+          "group": "1_assistantActions@3"
+        },
+        {
+          "command": "pinecone.updateAssistant",
+          "when": "view == pineconeExplorer && viewItem == assistant",
+          "group": "2_assistantManage"
         },
         {
           "command": "pinecone.deleteAssistant",
           "when": "view == pineconeExplorer && viewItem == assistant",
-          "group": "2_delete"
+          "group": "3_assistantDelete"
         },
         {
           "command": "pinecone.uploadFiles",
@@ -313,9 +362,14 @@
           "group": "1_upload"
         },
         {
+          "command": "pinecone.viewFileDetails",
+          "when": "view == pineconeExplorer && viewItem == file",
+          "group": "1_info"
+        },
+        {
           "command": "pinecone.deleteFile",
           "when": "view == pineconeExplorer && viewItem == file",
-          "group": "1_delete"
+          "group": "2_delete"
         },
         {
           "command": "pinecone.createNamespace",
@@ -361,6 +415,16 @@
           "command": "pinecone.deleteProject",
           "when": "view == pineconeExplorer && viewItem == project",
           "group": "2_delete"
+        },
+        {
+          "command": "pinecone.renameProject",
+          "when": "view == pineconeExplorer && viewItem == project",
+          "group": "1_manage"
+        },
+        {
+          "command": "pinecone.manageApiKeys",
+          "when": "view == pineconeExplorer && viewItem == project",
+          "group": "1_manage@2"
         }
       ],
       "commandPalette": [
@@ -382,6 +446,34 @@
         },
         {
           "command": "pinecone.viewRestoreJobs",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.openDataOps",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.updateAssistant",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.retrieveAssistantContext",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.evaluateAssistantAnswer",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.manageApiKeys",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.openInferenceToolbox",
+          "when": "pinecone.isAuthenticated"
+        },
+        {
+          "command": "pinecone.viewFileDetails",
           "when": "pinecone.isAuthenticated"
         }
       ]
@@ -421,7 +513,10 @@
     "lint": "eslint src --ext ts",
     "lint:fix": "eslint src --ext ts --fix",
     "test": "vscode-test",
-    "test:coverage": "vscode-test --coverage"
+    "test:coverage": "rm -rf .coverage .nyc_output coverage && NODE_V8_COVERAGE=.coverage vscode-test --coverage && npm run coverage:check",
+    "test:integration": "npm run compile:tsc && vscode-test --config .vscode-test.integration.mjs",
+    "coverage:check": "node scripts/check-coverage-output.js",
+    "clean:artifacts": "find . -name .DS_Store -type f -delete && rm -rf .vscode-test"
   },
   "devDependencies": {
     "@types/form-data": "^2.2.1",

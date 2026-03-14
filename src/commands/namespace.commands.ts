@@ -16,6 +16,7 @@ import { PineconeTreeItem } from '../providers/treeItems';
 import { getErrorMessage } from '../utils/errorHandling';
 import { IndexModel, MetadataSchema } from '../api/types';
 import { buildProjectContextFromItem } from '../utils/treeItemHelpers';
+import { refreshExplorer } from '../utils/refreshExplorer';
 
 /**
  * Validates a namespace name.
@@ -118,7 +119,7 @@ export class NamespaceCommands {
             vscode.window.showInformationMessage(
                 `Namespace "${name || '(default)'}" created successfully`
             );
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({ delayMs: 0, focusExplorer: false });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to create namespace: ${message}`);
@@ -291,7 +292,7 @@ export class NamespaceCommands {
             });
 
             vscode.window.showInformationMessage(`Namespace "${displayName}" deleted successfully`);
-            vscode.commands.executeCommand('pinecone.refresh');
+            void refreshExplorer({ delayMs: 0, focusExplorer: false });
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to delete namespace: ${message}`);

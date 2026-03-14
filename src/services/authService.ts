@@ -14,11 +14,13 @@
 import * as vscode from 'vscode';
 import * as http from 'http';
 import * as crypto from 'crypto';
+import * as os from 'os';
 import fetch from 'node-fetch';
 import { ConfigService } from './configService';
 import { AdminApiClient } from '../api/adminApi';
-import { OAUTH_CONFIG, AUTH_CONTEXTS, AuthContextValue, OAUTH_CALLBACK_PORT } from '../utils/constants';
+import { OAUTH_CONFIG, AUTH_CONTEXTS, AuthContextValue, OAUTH_CALLBACK_PORT, OAUTH_LOGIN_TIMEOUT_MS } from '../utils/constants';
 import { createComponentLogger } from '../utils/logger';
+import { getErrorMessage } from '../utils/errorHandling';
 
 /** Logger for AuthService operations */
 const log = createComponentLogger('AuthService');
@@ -131,6 +133,10 @@ export class AuthService {
     
     /** Cache for service account tokens to avoid repeated token exchanges */
     private serviceAccountTokenCache: CachedToken | null = null;
+    /** Serializes OAuth refresh/scope-switch operations to avoid refresh-token races */
+    private tokenRefreshQueue: Promise<void> = Promise.resolve();
+    /** Prevent duplicate managed key creation for the same project under concurrent requests */
+    private managedKeyCreationInFlight = new Map<string, Promise<string>>();
 
     /**
      * Creates a new AuthService instance.
@@ -195,49 +201,10 @@ export class AuthService {
      * 
      * @throws {Error} When the callback server cannot start
      */
-    async login(): Promise<void> {
+    async login(timeoutMs: number = OAUTH_LOGIN_TIMEOUT_MS, organizationId?: string): Promise<void> {
         const state = crypto.randomBytes(16).toString('hex');
         const codeVerifier = crypto.randomBytes(32).toString('base64url');
         const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
-
-        const server = http.createServer(async (req, res) => {
-            const url = new URL(req.url!, `http://${req.headers.host}`);
-            if (url.pathname === '/auth-callback') {
-                const code = url.searchParams.get('code');
-                const returnedState = url.searchParams.get('state');
-
-                if (returnedState !== state) {
-                    res.writeHead(400);
-                    res.end('Invalid state parameter');
-                    return;
-                }
-
-                if (code) {
-                    try {
-                        const token = await this.exchangeCodeForToken(code, codeVerifier);
-                        this.saveOAuthToken(token);
-                        this.setAuthContextState(AUTH_CONTEXTS.USER_TOKEN);
-                        
-                        res.writeHead(200, { 'Content-Type': 'text/html' });
-                        res.end('<h1>Login Successful</h1><p>You can close this window and return to VSCode.</p>');
-                        
-                        await this.updateAuthContext();
-                        this._onDidChangeAuth.fire();
-                        vscode.window.showInformationMessage('Successfully logged in to Pinecone!');
-                    } catch (error: unknown) {
-                        res.writeHead(500);
-                        res.end('Authentication failed');
-                        vscode.window.showErrorMessage(`Authentication failed: ${error}`);
-                    } finally {
-                        server.close();
-                    }
-                }
-            }
-        });
-
-        // Start local server on the OAuth callback port to receive the auth code
-        server.listen(OAUTH_CALLBACK_PORT);
-
         const authUrl = new URL(OAUTH_CONFIG.authUrl);
         authUrl.searchParams.append('response_type', 'code');
         authUrl.searchParams.append('client_id', OAUTH_CONFIG.clientId);
@@ -247,8 +214,219 @@ export class AuthService {
         authUrl.searchParams.append('code_challenge', codeChallenge);
         authUrl.searchParams.append('code_challenge_method', 'S256');
         authUrl.searchParams.append('audience', OAUTH_CONFIG.audience);
+        if (organizationId) {
+            authUrl.searchParams.append('orgId', organizationId);
+        }
 
-        vscode.env.openExternal(vscode.Uri.parse(authUrl.toString()));
+        await new Promise<void>((resolve, reject) => {
+            let timeoutId: NodeJS.Timeout | undefined;
+            let settled = false;
+
+            const server = http.createServer((req, res) => {
+                void (async () => {
+                    if (!req.url || !req.headers.host) {
+                        res.writeHead(400);
+                        res.end('Invalid callback request');
+                        await settleReject(new Error('Invalid OAuth callback request.'));
+                        return;
+                    }
+
+                    const url = new URL(req.url, `http://${req.headers.host}`);
+                    if (url.pathname !== '/auth-callback') {
+                        res.writeHead(404);
+                        res.end('Not found');
+                        return;
+                    }
+
+                    const code = url.searchParams.get('code');
+                    const returnedState = url.searchParams.get('state');
+
+                    if (returnedState !== state) {
+                        res.writeHead(400);
+                        res.end('Invalid state parameter');
+                        await settleReject(new Error('Invalid state parameter received from OAuth callback.'));
+                        return;
+                    }
+
+                    if (!code) {
+                        res.writeHead(400);
+                        res.end('Missing authorization code');
+                        await settleReject(new Error('OAuth callback did not include an authorization code.'));
+                        return;
+                    }
+
+                    try {
+                        const token = await this.exchangeCodeForToken(code, codeVerifier);
+                        this.saveOAuthToken(token);
+                        this.setAuthContextState(AUTH_CONTEXTS.USER_TOKEN);
+
+                        res.writeHead(200, { 'Content-Type': 'text/html' });
+                        res.end('<h1>Login Successful</h1><p>You can close this window and return to VSCode.</p>');
+
+                        await this.updateAuthContext();
+                        this._onDidChangeAuth.fire();
+                        vscode.window.showInformationMessage('Successfully logged in to Pinecone!');
+                        await settleResolve();
+                    } catch (error: unknown) {
+                        res.writeHead(500);
+                        res.end('Authentication failed');
+                        await settleReject(new Error(`Authentication failed: ${getErrorMessage(error)}`));
+                    }
+                })();
+            });
+
+            const settleResolve = async (): Promise<void> => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+                await this.closeServer(server);
+                resolve();
+            };
+
+            const settleReject = async (error: Error): Promise<void> => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+                await this.closeServer(server);
+                reject(error);
+            };
+
+            server.on('error', (error: NodeJS.ErrnoException) => {
+                if (error.code === 'EADDRINUSE') {
+                    void settleReject(
+                        new Error(
+                            `OAuth callback port ${OAUTH_CALLBACK_PORT} is already in use (EADDRINUSE).`
+                        )
+                    );
+                    return;
+                }
+                void settleReject(error);
+            });
+
+            server.listen(OAUTH_CALLBACK_PORT, () => {
+                timeoutId = setTimeout(() => {
+                    void settleReject(
+                        new Error(
+                            `Login timed out after ${Math.floor(timeoutMs / 1000)} seconds.`
+                        )
+                    );
+                }, timeoutMs);
+
+                void (async () => {
+                    try {
+                        const opened = await vscode.env.openExternal(vscode.Uri.parse(authUrl.toString()));
+                        if (!opened) {
+                            await settleReject(new Error('Could not open browser for OAuth login.'));
+                        }
+                    } catch (error: unknown) {
+                        await settleReject(
+                            new Error(`Could not open browser for OAuth login: ${getErrorMessage(error)}`)
+                        );
+                    }
+                })();
+            });
+        });
+    }
+
+    /**
+     * Attempts to switch OAuth organization scope using refresh token exchange.
+     *
+     * Returns true only when the refreshed token is scoped to the requested org.
+     */
+    async switchOrganization(organizationId: string): Promise<boolean> {
+        if (!organizationId || this.getAuthContext() !== AUTH_CONTEXTS.USER_TOKEN) {
+            return false;
+        }
+
+        const secrets = this.configService.getSecrets();
+        const currentToken = secrets.oauth2_token;
+        if (!currentToken?.refresh_token) {
+            return false;
+        }
+
+        const currentOrgId = this.getTokenOrganizationId(currentToken.access_token);
+        if (currentOrgId === organizationId) {
+            return true;
+        }
+
+        try {
+            return await this.runTokenRefreshExclusive(async () => {
+                const latestToken = this.configService.getSecrets().oauth2_token;
+                if (!latestToken?.refresh_token) {
+                    return false;
+                }
+
+                const latestOrgId = this.getTokenOrganizationId(latestToken.access_token);
+                if (latestOrgId === organizationId) {
+                    return true;
+                }
+
+                const refreshed = await this.refreshToken(latestToken.refresh_token, organizationId);
+                this.saveOAuthToken(refreshed);
+
+                const refreshedOrgId = this.getTokenOrganizationId(refreshed.access_token);
+                if (refreshedOrgId !== organizationId) {
+                    log.warn(`Requested org scope "${organizationId}" but received token for "${refreshedOrgId || 'unknown'}".`);
+                    return false;
+                }
+
+                // Do not fire auth-change refresh events when only org scope changes.
+                // Auth context and authenticated state remain unchanged, and emitting
+                // this event can create tree refresh loops when multiple orgs are expanded.
+                return true;
+            });
+        } catch (error: unknown) {
+            log.warn(`Failed to switch OAuth organization to "${organizationId}":`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Extracts the organization ID claim from an access token.
+     */
+    private getTokenOrganizationId(accessToken: string | undefined): string | undefined {
+        if (!accessToken) {
+            return undefined;
+        }
+
+        try {
+            const parts = accessToken.split('.');
+            if (parts.length < 2) {
+                return undefined;
+            }
+
+            const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as Record<string, unknown>;
+            const orgId =
+                payload['https://pinecone.io/orgId'] ??
+                payload.orgId ??
+                payload.organization_id;
+
+            return typeof orgId === 'string' ? orgId : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Closes the OAuth callback server and waits for completion.
+     */
+    private async closeServer(server: http.Server): Promise<void> {
+        await new Promise<void>((resolve) => {
+            if (!server.listening) {
+                resolve();
+                return;
+            }
+            server.close(() => resolve());
+        });
+        server.removeAllListeners();
     }
 
     private async exchangeCodeForToken(code: string, codeVerifier: string): Promise<OAuth2Token> {
@@ -351,8 +529,22 @@ export class AuthService {
             if (timeUntilExpiry < 90000) {
                 if (token.refresh_token) {
                     try {
-                        token = await this.refreshToken(token.refresh_token);
-                        this.saveOAuthToken(token);
+                        token = await this.runTokenRefreshExclusive(async () => {
+                            const latestToken = this.configService.getSecrets().oauth2_token;
+                            if (!latestToken?.refresh_token) {
+                                throw new Error('No refresh token available');
+                            }
+
+                            const latestExpiryTime = new Date(latestToken.expiry).getTime();
+                            const latestTimeUntilExpiry = latestExpiryTime - Date.now();
+                            if (latestTimeUntilExpiry >= 90000) {
+                                return latestToken;
+                            }
+
+                            const refreshed = await this.refreshToken(latestToken.refresh_token);
+                            this.saveOAuthToken(refreshed);
+                            return refreshed;
+                        });
                     } catch (error: unknown) {
                         await this.handleAuthFailure('Token expired. Please log in again.');
                         throw new Error('Token expired and refresh failed');
@@ -383,21 +575,47 @@ export class AuthService {
     }
 
     /**
+     * Ensures token refresh operations run one at a time.
+     *
+     * OAuth refresh tokens can rotate; concurrent refreshes with stale tokens
+     * can invalidate session state. This queue prevents that race.
+     */
+    private async runTokenRefreshExclusive<T>(operation: () => Promise<T>): Promise<T> {
+        const previous = this.tokenRefreshQueue;
+        let release!: () => void;
+        this.tokenRefreshQueue = new Promise<void>(resolve => {
+            release = resolve;
+        });
+
+        await previous;
+        try {
+            return await operation();
+        } finally {
+            release();
+        }
+    }
+
+    /**
      * Refreshes an OAuth2 token using the refresh token.
      * 
      * @param refreshToken - Current refresh token
      * @returns New OAuth2 token with updated access and refresh tokens
      * @throws {Error} When refresh fails
      */
-    private async refreshToken(refreshToken: string): Promise<OAuth2Token> {
+    private async refreshToken(refreshToken: string, organizationId?: string): Promise<OAuth2Token> {
+        const body = new URLSearchParams();
+        body.set('grant_type', 'refresh_token');
+        body.set('client_id', OAUTH_CONFIG.clientId);
+        body.set('refresh_token', refreshToken);
+        body.set('audience', OAUTH_CONFIG.audience);
+        if (organizationId) {
+            body.set('orgId', organizationId);
+        }
+
         const response = await fetch(OAUTH_CONFIG.tokenUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                grant_type: 'refresh_token',
-                client_id: OAUTH_CONFIG.clientId,
-                refresh_token: refreshToken
-            })
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
         });
 
         if (!response.ok) {
@@ -603,42 +821,92 @@ export class AuthService {
             log.debug(`Using existing managed API key for project ${projectId}`);
             return existingKey.value;
         }
-        
-        // Need to create a new managed key
-        log.info(`Creating managed API key for project ${projectName} (${projectId})`);
-        
-        // Get current access token for Admin API call
-        const accessToken = await this.getAccessToken();
-        
-        // Create the key via Admin API
-        const adminApi = new AdminApiClient();
-        const keyName = `${VSCODE_API_KEY_PREFIX}${Date.now()}`;
-        
-        const keyWithSecret = await adminApi.createAPIKey(accessToken, projectId, {
-            name: keyName,
-            roles: ['ProjectEditor']
-        });
-        
-        // Store the managed key in secrets
-        const newManagedKey: ManagedKey = {
-            name: keyName,
-            id: keyWithSecret.key.id,
-            value: keyWithSecret.value,
-            origin: 'vscode_managed',
-            project_id: projectId,
-            project_name: projectName,
-            organization_id: organizationId
-        };
-        
-        // Ensure managedKeys is a proper object before assigning
-        const updatedKeys: Record<string, ManagedKey> = { ...managedKeys };
-        updatedKeys[projectId] = newManagedKey;
-        secrets.project_api_keys = updatedKeys;
-        this.configService.saveSecrets(secrets);
-        
-        log.info(`Created and stored managed API key ${keyWithSecret.key.id} for project ${projectName}`);
-        
-        return keyWithSecret.value;
+
+        const existingCreation = this.managedKeyCreationInFlight.get(projectId);
+        if (existingCreation) {
+            return existingCreation;
+        }
+
+        const createPromise = (async (): Promise<string> => {
+            // Need to create a new managed key
+            log.info(`Creating managed API key for project ${projectName} (${projectId})`);
+
+            if (context === AUTH_CONTEXTS.USER_TOKEN) {
+                const switched = await this.switchOrganization(organizationId);
+                if (!switched) {
+                    throw new Error(`Could not switch authentication scope to organization "${organizationId}".`);
+                }
+            }
+
+            // Get current access token for Admin API call
+            const accessToken = await this.getAccessToken();
+
+            // Create the key via Admin API
+            const adminApi = new AdminApiClient();
+            const keyName = this.getManagedKeyName();
+
+            // If this machine has created a key before but local cache was cleared,
+            // rotate the stale key with the same deterministic name so we don't
+            // accumulate timestamped duplicates.
+            const existingProjectKeys = await adminApi.listAPIKeys(accessToken, projectId, organizationId);
+            const staleKeys = existingProjectKeys.filter(key => key.name === keyName);
+            for (const staleKey of staleKeys) {
+                try {
+                    await adminApi.deleteAPIKey(accessToken, staleKey.id);
+                    log.info(`Deleted stale managed API key ${staleKey.id} before recreate`);
+                } catch (error: unknown) {
+                    log.warn(`Failed to delete stale managed API key ${staleKey.id}:`, error);
+                }
+            }
+
+            const keyWithSecret = await adminApi.createAPIKey(accessToken, projectId, {
+                name: keyName,
+                roles: ['ProjectEditor']
+            }, organizationId);
+
+            // Store the managed key in secrets
+            const newManagedKey: ManagedKey = {
+                name: keyName,
+                id: keyWithSecret.key.id,
+                value: keyWithSecret.value,
+                origin: 'vscode_managed',
+                project_id: projectId,
+                project_name: projectName,
+                organization_id: organizationId
+            };
+
+            // Ensure managedKeys is a proper object before assigning
+            const updatedKeys: Record<string, ManagedKey> = { ...managedKeys };
+            updatedKeys[projectId] = newManagedKey;
+            secrets.project_api_keys = updatedKeys;
+            this.configService.saveSecrets(secrets);
+
+            log.info(`Created and stored managed API key ${keyWithSecret.key.id} for project ${projectName}`);
+            return keyWithSecret.value;
+        })();
+
+        this.managedKeyCreationInFlight.set(projectId, createPromise);
+        try {
+            return await createPromise;
+        } finally {
+            this.managedKeyCreationInFlight.delete(projectId);
+        }
+    }
+
+    /**
+     * Builds a deterministic managed key name for this machine.
+     *
+     * Using a stable machine fingerprint avoids accumulating many timestamped
+     * keys after local cache clears while keeping keys distinct across machines.
+     */
+    private getManagedKeyName(): string {
+        const hostName = os.hostname();
+        const fingerprint = crypto
+            .createHash('sha256')
+            .update(hostName)
+            .digest('hex')
+            .slice(0, 12);
+        return `${VSCODE_API_KEY_PREFIX}${fingerprint}`;
     }
 
     /**
@@ -666,6 +934,9 @@ export class AuthService {
         // Delete from server if requested
         if (deleteFromServer && existingKey.origin === 'vscode_managed') {
             try {
+                if (this.getAuthContext() === AUTH_CONTEXTS.USER_TOKEN && existingKey.organization_id) {
+                    await this.switchOrganization(existingKey.organization_id);
+                }
                 const accessToken = await this.getAccessToken();
                 const adminApi = new AdminApiClient();
                 await adminApi.deleteAPIKey(accessToken, existingKey.id);
