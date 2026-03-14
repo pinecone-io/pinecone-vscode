@@ -46,14 +46,21 @@
                 </div>
             </div>
 
-            <div class="form-group">
-                <label for="filter-input">Filter (JSON)</label>
-                <textarea id="filter-input" placeholder='{"genre": "action"}' rows="2"></textarea>
-            </div>
+                    <div class="form-group">
+                        <label for="filter-input">Filter (JSON)</label>
+                        <textarea id="filter-input" placeholder='{"genre": "action"}' rows="2"></textarea>
+                    </div>
 
-            <div class="checkbox-group">
-                <label>
-                    <input type="checkbox" id="include-values" checked> Include Values
+                    <div id="search-advanced-section" class="hidden">
+                        <div class="form-group">
+                            <label for="fields-input">Fields (comma-separated)</label>
+                            <input type="text" id="fields-input" placeholder="title,url,text">
+                        </div>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" id="include-values" checked> Include Values
                 </label>
                 <label id="metadata-option">
                     <input type="checkbox" id="include-metadata" checked> Include Metadata
@@ -67,7 +74,10 @@
         <div id="error" class="error hidden"></div>
 
         <div id="results" class="results-section hidden">
-            <h3>Matches</h3>
+            <div class="results-header">
+                <h3>Matches</h3>
+                <button id="clear-results-btn" class="secondary-action hidden" type="button">Clear</button>
+            </div>
             <div id="matches-list"></div>
         </div>
     </div>

@@ -11,15 +11,20 @@ Manage your Pinecone vector databases and AI assistants directly from VSCode.
   - [Organization & Project Management](#organization--project-management)
   - [Index Management (Serverless)](#index-management-serverless)
   - [Assistant Management](#assistant-management)
+  - [Inference Toolbox](#inference-toolbox)
   - [Authentication](#authentication)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Authentication](#authentication-1)
 - [Usage Guide](#usage-guide)
+  - [Managing Projects](#managing-projects)
   - [Managing Indexes](#managing-indexes)
   - [Managing Assistants](#managing-assistants)
+  - [Managing API Keys](#managing-api-keys)
+  - [Using Inference Toolbox](#using-inference-toolbox)
 - [Configuration](#configuration)
+- [Command Reference](#command-reference)
 - [Troubleshooting](#troubleshooting)
   - [Extension Not Showing](#extension-not-showing)
   - [Authentication Issues](#authentication-issues)
@@ -39,19 +44,29 @@ Manage your Pinecone vector databases and AI assistants directly from VSCode.
 - **Multi-Organization Support**: Browse all organizations you have access to
 - **Project Navigation**: View and navigate projects within each organization
 - **Create Projects**: Create new projects within an organization (OAuth/Service Account)
+- **Rename Projects**: Rename projects from the project context menu (name-only update)
 - **Delete Projects**: Remove projects with confirmation safeguards
+- **API Key Management Panel**: List, create, and revoke project API keys from a dedicated panel
 
 ### Index Management (Serverless)
 - **Browse Indexes**: View all serverless indexes organized by organization and project
-- **Create Indexes**: Interactive wizard with two modes:
+- **Create Indexes**: Dedicated Create Index dialog with two modes:
   - **Integrated Embeddings**: Pinecone automatically converts text to vectors using hosted models (Llama Text Embed v2, Multilingual E5 Large, Pinecone Sparse English)
   - **Bring Your Own Vectors**: Create dense or sparse indexes for your own embeddings
 - **Cloud Support**: AWS (us-east-1, us-west-2, eu-west-1), GCP (us-central1, europe-west4), Azure (eastus2)
-- **Configure**: Update deletion protection and tags
+- **Configure**: Dedicated Configure Index dialog to edit deletion protection and tags
 - **Smart Query Panel**: 
   - Text-based search for indexes with integrated embeddings
   - Vector-based query for standard indexes
   - Supports ID lookup, filtering, and namespaces
+  - Advanced `search_records` `fields` selection
+- **Data Ops Panel**:
+  - Structured forms for vector upsert/fetch/update/delete/list
+  - Upsert records for integrated embedding indexes
+  - Fetch/update by metadata filters
+  - Import lifecycle operation (start)
+  - Result rendering inline under each operation section with match-style cards/tables
+- **Scoped Dialog Instances**: Multiple dialogs can be open at once across resources, with one active dialog per resource/context
 - **Statistics**: View vector counts and namespace breakdown
 - **Backups**: Create, view, restore, and delete index backups
 - **Namespace Management**: Create, view, and delete namespaces within indexes
@@ -60,11 +75,22 @@ Manage your Pinecone vector databases and AI assistants directly from VSCode.
 - **Browse Assistants**: View all assistants and their files
 - **Create Assistants**: Set up new assistants with custom instructions
 - **Streaming Chat**: Real-time streaming chat interface with citation support
+- **Assistant Tools Panel**:
+  - Update assistant instructions and metadata
+  - Retrieve assistant context snippets
+  - Evaluate answers
 - **Model Selection**: Choose from multiple AI models:
   - GPT-4o, GPT-4.1, GPT-5, o4-mini (OpenAI)
   - Claude Sonnet 4.5 (Anthropic)
   - Gemini 2.5 Pro (Google)
-- **File Management**: Upload and delete files
+- **File Management**: Upload and delete files, with per-file metadata dialog and optional list-level metadata fan-out
+
+### Inference Toolbox
+- **Embed**: Generate embeddings for one or multiple inputs with automatic `input_type` defaulting to `query` (overrideable in UI)
+- **Rerank**: Rerank candidate documents against a query with model-aware token-limit truncation
+- **Model Selection**: Embed and rerank model dropdowns are populated from `list models`
+- **Rerank Document UX**: Collapsible document editors with single-click **Clear All Documents**
+- **Result Presentation**: Embed and rerank results render inline under each section with match/table styling
 
 ### Authentication
 - **CLI Compatible**: Uses the same configuration files as the Pinecone CLI
@@ -116,13 +142,19 @@ This opens your browser to authenticate with your Pinecone account. After loggin
 
 ## Usage Guide
 
+### Managing Projects
+
+1. Right-click an organization to create a project
+2. Right-click a project to rename it (**Rename Project**)
+3. Right-click a project to delete it (**Delete Project**)
+
 ### Managing Indexes
 
 #### Create an Index
 
 1. Right-click on **Database** in the tree view
 2. Select **Create Index**
-3. Choose your vector approach:
+3. Use the Create Index dialog to choose your vector approach:
    - **Integrated Embeddings**: Pinecone converts text to vectors automatically
    - **Bring Your Own Vectors**: Use your own embedding model
 
@@ -140,6 +172,14 @@ This opens your browser to authenticate with your Pinecone account. After loggin
 3. For sparse: Metric is automatically set to dotproduct
 4. Choose cloud provider and region
 
+#### Configure an Index
+
+1. Right-click an index
+2. Select **Configure Index**
+3. Use the dialog to:
+   - Enable/disable deletion protection
+   - Add, remove, or edit tags
+
 #### Query an Index
 
 1. Right-click on an index
@@ -148,7 +188,15 @@ This opens your browser to authenticate with your Pinecone account. After loggin
    - **Integrated Embedding indexes**: Enter text - Pinecone auto-converts to vectors
    - **Standard indexes**: Enter a vector array or existing vector ID
 4. Configure options: Top K, namespace, filters
-5. View results with metadata and optional vector values
+5. For integrated embedding indexes, optionally set advanced `fields` selection
+6. View results with metadata and optional vector values
+
+#### Data Operations Panel
+
+1. Right-click on an index
+2. Select **Data Operations**
+3. Use structured forms for vector CRUD/list and import operations
+4. Run operations and inspect styled results directly under each operation section
 
 #### View Index Statistics
 
@@ -164,11 +212,9 @@ This opens your browser to authenticate with your Pinecone account. After loggin
 
 #### Backup and Restore
 
-1. Right-click on an index for backup options:
-   - **Create Backup**: Start a new backup
-   - **View Backups**: See all backups for this index
-   - **Restore from Backup**: Create a new index from a backup
-   - **Delete Backup**: Remove a backup
+1. Expand an index and use the **Backups** node for backup operations:
+   - Right-click **Backups** to **Create Backup**
+   - Right-click a backup to **Restore from Backup** or **Delete Backup**
 2. Use `View Restore Jobs` from the command palette to monitor restore progress
 
 ### Managing Assistants
@@ -177,7 +223,7 @@ This opens your browser to authenticate with your Pinecone account. After loggin
 
 1. Right-click on **Assistant** in the tree view
 2. Select **Create Assistant**
-3. Enter name, region, and optional instructions
+3. Enter name, region, optional instructions, and optional metadata JSON
 
 #### Chat with an Assistant
 
@@ -194,6 +240,57 @@ This opens your browser to authenticate with your Pinecone account. After loggin
 2. Right-click on **Files**
 3. Select **Upload Files**
 4. Choose one or more files to upload
+5. In the metadata dialog, either:
+   - set metadata per file, or
+   - set list-level metadata once to apply to all selected files (per-file fields are disabled while set)
+
+#### Assistant Tools
+
+1. Right-click on an assistant
+2. Use one of:
+   - **Update Assistant**
+   - **Retrieve Context**
+   - **Evaluate Answer**
+3. Each action opens its own dedicated dialog
+4. Evaluate dialog includes inline usage guidance with a link to Assistant API docs and requires a ground truth answer
+
+### Managing API Keys
+
+1. Right-click on a project
+2. Select **Manage API Keys**
+3. In the panel:
+   - List existing keys
+   - Create a key (name + role multi-select)
+   - Revoke a key
+   - Role choices: `ProjectEditor`, `ProjectViewer`, `ControlPlaneEditor`, `ControlPlaneViewer`, `DataPlaneEditor`, `DataPlaneViewer`
+   - Role mode is either one project role (`ProjectEditor` or `ProjectViewer`) or, if neither project role is selected, control/data roles with editor/viewer exclusivity per plane
+4. On key creation, copy the secret immediately; it is shown only once and not persisted by the extension
+
+### Using Inference Toolbox
+
+1. Open the Pinecone view title actions
+2. Select **Inference Toolbox**
+3. Use forms for:
+   - Embeddings (`embed`)
+   - Reranking (`rerank`)
+4. Select models from dropdowns populated from the `list models` API
+5. Embed `input_type` defaults to `query` when left on Auto
+6. Rerank documents are collapsible and can be reset with **Clear All Documents**
+7. Rerank automatically truncates documents based on model token limits and retries once with stricter API-returned limits when necessary
+
+## Command Reference
+
+Key extension commands available from context menus and/or the Command Palette:
+
+- `Pinecone: Data Operations`
+- `Pinecone: Update Assistant`
+- `Pinecone: Retrieve Context`
+- `Pinecone: Evaluate Answer`
+- `Pinecone: Manage API Keys`
+- `Pinecone: Open Inference Toolbox`
+- `Pinecone: Rename Project`
+- `Pinecone: Upload Files`
+- `Pinecone: Query Index`
 
 ## Configuration
 

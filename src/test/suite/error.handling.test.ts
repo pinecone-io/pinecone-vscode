@@ -74,12 +74,12 @@ suite('Error Handling Utilities (Production Functions)', () => {
         assert.strictEqual(classified.requiresLogin, false);
     });
 
-    test('isAuthenticationError detects missing project-context errors consistently', () => {
-        const authError = new Error('x-project-id header is required');
-        const nonAuthError = new Error('namespace not found');
+    test('isAuthenticationError does not treat missing project-context as expired login', () => {
+        const contextError = new Error('x-project-id header is required');
+        const authError = new Error('Unauthorized');
 
+        assert.strictEqual(isAuthenticationError(contextError), false);
         assert.strictEqual(isAuthenticationError(authError), true);
-        assert.strictEqual(isAuthenticationError(nonAuthError), false);
     });
 
     test('isNetworkError detects common connectivity failures', () => {

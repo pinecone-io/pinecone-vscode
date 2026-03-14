@@ -94,14 +94,14 @@ export function getApiBaseUrl(environment: 'production' | 'staging' = 'productio
  * API features and response formats are available.
  * 
  * **Version History:**
- * - 2025-04: Current version used by this extension
+ * - 2025-10: Current version used by this extension
  * 
  * **Important:** When updating this version, ensure all API response types
  * in `types.ts` are updated to match the new schema.
  * 
  * @see https://docs.pinecone.io/reference/api/versioning
  */
-export const API_VERSION = '2025-04';
+export const API_VERSION = '2025-10';
 
 // ============================================================================
 // Assistant Models Configuration

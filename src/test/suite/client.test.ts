@@ -31,6 +31,9 @@ interface CapturedCall {
 class MockAuthService {
     private _authContext: AuthContext = AUTH_CONTEXTS.API_KEY;
     private _token: string = 'test-api-key';
+    private _managedKeyValue: string = 'managed-key-1';
+    public managedKeyCalls = 0;
+    public deletedManagedKeys: string[] = [];
 
     setAuthContext(context: AuthContext): void {
         this._authContext = context;
@@ -46,6 +49,19 @@ class MockAuthService {
 
     async getAccessToken(): Promise<string> {
         return this._token;
+    }
+
+    setManagedKeyValue(value: string): void {
+        this._managedKeyValue = value;
+    }
+
+    async getOrCreateManagedKey(_projectId: string, _projectName: string, _organizationId: string): Promise<string> {
+        this.managedKeyCalls += 1;
+        return this._managedKeyValue;
+    }
+
+    async deleteManagedKey(projectId: string, _deleteFromServer?: boolean): Promise<void> {
+        this.deletedManagedKeys.push(projectId);
     }
 }
 
@@ -308,6 +324,97 @@ suite('PineconeClient Test Suite', () => {
         // Should not throw JSON parse error
         const result = await client.request('DELETE', '/indexes/test-index');
         assert.deepStrictEqual(result, {});
+    });
+
+    test('should self-heal stale managed key on GET auth failure and retry once', async () => {
+        mockAuthService.setAuthContext(AUTH_CONTEXTS.USER_TOKEN);
+        mockAuthService.setToken('jwt-token');
+        mockAuthService.setManagedKeyValue('stale-key');
+
+        let callCount = 0;
+        const healingFetch: FetchFunction = async (_url, init) => {
+            callCount += 1;
+            const headers = (init?.headers || {}) as Record<string, string>;
+            if (callCount === 1) {
+                assert.strictEqual(headers['Api-Key'], 'stale-key');
+                mockAuthService.setManagedKeyValue('fresh-key');
+                return {
+                    ok: false,
+                    status: 401,
+                    statusText: 'Unauthorized',
+                    text: async () => 'Unauthorized'
+                } as unknown as Response;
+            }
+
+            assert.strictEqual(headers['Api-Key'], 'fresh-key');
+            return {
+                ok: true,
+                status: 200,
+                statusText: 'OK',
+                text: async () => JSON.stringify({ ok: true })
+            } as unknown as Response;
+        };
+
+        const client = new PineconeClient(
+            mockAuthService as unknown as AuthService,
+            healingFetch
+        );
+        client.setProjectContext({
+            id: 'proj-123',
+            name: 'Project 123',
+            organizationId: 'org-123'
+        });
+
+        const result = await client.request<{ ok: boolean }>('GET', '/indexes');
+        assert.deepStrictEqual(result, { ok: true });
+        assert.strictEqual(callCount, 2);
+        assert.deepStrictEqual(mockAuthService.deletedManagedKeys, ['proj-123']);
+        assert.strictEqual(mockAuthService.managedKeyCalls, 2);
+    });
+
+    test('should retry managed key auth failures for POST requests once', async () => {
+        mockAuthService.setAuthContext(AUTH_CONTEXTS.USER_TOKEN);
+        mockAuthService.setToken('jwt-token');
+        mockAuthService.setManagedKeyValue('stale-key');
+
+        let callCount = 0;
+        const retryingFetch: FetchFunction = async (_url, init) => {
+            callCount += 1;
+            const headers = (init?.headers || {}) as Record<string, string>;
+            if (callCount === 1) {
+                assert.strictEqual(headers['Api-Key'], 'stale-key');
+                mockAuthService.setManagedKeyValue('fresh-key');
+                return {
+                    ok: false,
+                    status: 401,
+                    statusText: 'Unauthorized',
+                    text: async () => 'Unauthorized'
+                } as unknown as Response;
+            }
+            assert.strictEqual(headers['Api-Key'], 'fresh-key');
+            return {
+                ok: true,
+                status: 200,
+                statusText: 'OK',
+                text: async () => JSON.stringify({ ok: true })
+            } as unknown as Response;
+        };
+
+        const client = new PineconeClient(
+            mockAuthService as unknown as AuthService,
+            retryingFetch
+        );
+        client.setProjectContext({
+            id: 'proj-123',
+            name: 'Project 123',
+            organizationId: 'org-123'
+        });
+
+        const result = await client.request<{ ok: boolean }>('POST', '/embed', { body: { model: 'm1', inputs: ['x'] } });
+        assert.deepStrictEqual(result, { ok: true });
+        assert.strictEqual(callCount, 2);
+        assert.deepStrictEqual(mockAuthService.deletedManagedKeys, ['proj-123']);
+        assert.strictEqual(mockAuthService.managedKeyCalls, 2);
     });
 });
 

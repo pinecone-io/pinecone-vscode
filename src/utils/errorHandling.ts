@@ -228,8 +228,7 @@ export function isAuthenticationError(error: unknown): boolean {
            message.includes('authentication') ||
            message.includes('token expired') ||
            message.includes('invalid api key') ||
-           message.includes('not authenticated') ||
-           message.includes('x-project-id');
+           message.includes('not authenticated');
 }
 
 /**

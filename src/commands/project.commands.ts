@@ -244,4 +244,47 @@ export class ProjectCommands {
             vscode.window.showErrorMessage(`Failed to delete project: ${message}`);
         }
     }
+
+    /**
+     * Renames a project.
+     *
+     * Only project name updates are exposed in the extension.
+     */
+    async renameProject(item: PineconeTreeItem): Promise<void> {
+        const token = await this.getAdminToken();
+        if (!token) { return; }
+
+        const projectId = item.resourceId;
+        const projectName = item.label as string;
+        if (!projectId) {
+            vscode.window.showErrorMessage('Could not determine project to rename');
+            return;
+        }
+
+        const newName = await vscode.window.showInputBox({
+            prompt: `Enter new name for project "${projectName}"`,
+            placeHolder: projectName,
+            value: projectName,
+            validateInput: validateProjectName
+        });
+        if (!newName || newName === projectName) {
+            return;
+        }
+
+        try {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Renaming project "${projectName}"...`,
+                cancellable: false
+            }, async () => {
+                await this.pineconeService.getAdminApi().updateProject(token, projectId, { name: newName });
+            });
+
+            vscode.window.showInformationMessage(`Project renamed to "${newName}"`);
+            void refreshExplorer({ delayMs: 0, focusExplorer: false });
+        } catch (e: unknown) {
+            const message = getErrorMessage(e);
+            vscode.window.showErrorMessage(`Failed to rename project: ${message}`);
+        }
+    }
 }

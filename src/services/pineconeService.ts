@@ -27,6 +27,7 @@ import { DataPlaneApi } from '../api/dataPlane';
 import { AssistantApi } from '../api/assistantApi';
 import { AdminApiClient } from '../api/adminApi';
 import { NamespaceApi } from '../api/namespaceApi';
+import { InferenceApi } from '../api/inferenceApi';
 import { AuthService } from './authService';
 import { ConfigService, TargetOrganization, TargetProject } from './configService';
 import { AUTH_CONTEXTS } from '../utils/constants';
@@ -68,6 +69,7 @@ export class PineconeService {
     private assistantApi: AssistantApi;
     private adminApi: AdminApiClient;
     private namespaceApi: NamespaceApi;
+    private inferenceApi: InferenceApi;
     private configService: ConfigService;
 
     /**
@@ -82,6 +84,7 @@ export class PineconeService {
         this.assistantApi = new AssistantApi(this.client, authService);
         this.adminApi = new AdminApiClient();
         this.namespaceApi = new NamespaceApi(this.client);
+        this.inferenceApi = new InferenceApi(this.client);
         this.configService = new ConfigService();
         
         // Restore project context from persisted state
@@ -93,8 +96,19 @@ export class PineconeService {
      * Called on initialization to restore the last selected project.
      */
     private restoreProjectContext(): void {
+        const targetOrganization = this.configService.getTargetOrganization();
         const targetProject = this.configService.getTargetProject();
+        if (targetProject?.id && targetOrganization?.id) {
+            this.client.setProjectContext({
+                id: targetProject.id,
+                name: targetProject.name,
+                organizationId: targetOrganization.id
+            });
+            return;
+        }
+
         if (targetProject?.id) {
+            this.client.setProjectContext(undefined);
             this.client.setProjectId(targetProject.id);
         }
     }
@@ -127,6 +141,13 @@ export class PineconeService {
      */
     getProjectId(): string | undefined {
         return this.client.getProjectId();
+    }
+
+    /**
+     * Gets the current authentication context.
+     */
+    getAuthContext(): string {
+        return this.authService.getAuthContext();
     }
 
     /**
@@ -403,6 +424,7 @@ export class PineconeService {
         // If org changes, project context is cleared by ConfigService
         // Also clear the client's project ID
         if (!org) {
+            this.client.setProjectContext(undefined);
             this.client.setProjectId(undefined);
         }
     }
@@ -416,6 +438,14 @@ export class PineconeService {
     }
 
     /**
+     * Gets the currently configured full project context (if available).
+     * Useful for operations that require project + organization identifiers.
+     */
+    getCurrentProjectContext(): ProjectContext | undefined {
+        return this.client.getProjectContext();
+    }
+
+    /**
      * Sets and persists the target project.
      * Also updates the client's project ID for API calls.
      * 
@@ -423,7 +453,25 @@ export class PineconeService {
      */
     setTargetProject(project: TargetProject | undefined): void {
         this.configService.setTargetProject(project);
-        this.client.setProjectId(project?.id);
+        if (!project) {
+            this.client.setProjectContext(undefined);
+            this.client.setProjectId(undefined);
+            return;
+        }
+
+        const targetOrganization = this.configService.getTargetOrganization();
+        if (targetOrganization?.id) {
+            this.client.setProjectContext({
+                id: project.id,
+                name: project.name,
+                organizationId: targetOrganization.id
+            });
+            return;
+        }
+
+        // No organization available yet. Use X-Project-Id fallback and avoid stale full context.
+        this.client.setProjectContext(undefined);
+        this.client.setProjectId(project.id);
     }
 
     /**
@@ -432,6 +480,7 @@ export class PineconeService {
      */
     clearTargetContext(): void {
         this.configService.clearTargetContext();
+        this.client.setProjectContext(undefined);
         this.client.setProjectId(undefined);
     }
 
@@ -482,5 +531,14 @@ export class PineconeService {
      */
     getAdminApi(): AdminApiClient {
         return this.adminApi;
+    }
+
+    /**
+     * Gets the Inference API client for embed/rerank/model operations.
+     *
+     * @returns InferenceApi instance
+     */
+    getInferenceApi(): InferenceApi {
+        return this.inferenceApi;
     }
 }

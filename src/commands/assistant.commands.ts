@@ -18,7 +18,7 @@ import { refreshExplorer } from '../utils/refreshExplorer';
 /**
  * Handles all assistant-related commands in the extension.
  * 
- * Provides interactive wizards for assistant creation and
+ * Opens dedicated dialogs for assistant creation/update workflows and
  * manages the chat panel lifecycle.
  */
 export class AssistantCommands {
@@ -35,16 +35,11 @@ export class AssistantCommands {
     ) {}
 
     /**
-     * Creates a new assistant using an interactive wizard.
+     * Opens the Create Assistant dialog.
      * 
      * When invoked from a tree item context (e.g., right-click on Assistant category),
      * the project context is extracted from the tree item's parentId. For JWT auth,
      * this ensures the assistant is created in the correct project.
-     * 
-     * Prompts the user for:
-     * - Assistant name
-     * - System instructions (optional)
-     * - Deployment region
      * 
      * @param item - Optional tree item providing project context
      */
@@ -56,78 +51,14 @@ export class AssistantCommands {
         if (item?.parentId) {
             this.pineconeService.setProjectId(item.parentId);
         }
-        
-        // Step 1: Get assistant name
-        const name = await vscode.window.showInputBox({
-            prompt: 'Enter assistant name',
-            placeHolder: 'my-assistant',
-            validateInput: (value) => {
-                if (!value) {return 'Name is required';}
-                if (!/^[a-z0-9-]+$/.test(value)) {
-                    return 'Name must consist of lowercase alphanumeric characters or hyphens';
-                }
-                if (value.length > 45) {
-                    return 'Name must be 45 characters or less';
-                }
-                return null;
-            }
-        });
-        if (!name) { return; }
 
-        // Step 2: Get instructions (optional)
-        const instructions = await vscode.window.showInputBox({
-            prompt: 'Enter system instructions (optional)',
-            placeHolder: 'You are a helpful assistant that answers questions about our documentation.'
-        });
-
-        // Step 3: Select region (use configured default)
-        const config = vscode.workspace.getConfiguration('pinecone');
-        const defaultRegion = config.get<string>('defaultRegion', 'us');
-        
-        const regionOptions = [
-            { label: 'us', description: 'United States' },
-            { label: 'eu', description: 'European Union' }
-        ];
-        // Sort to put default first
-        regionOptions.sort((a, b) => {
-            if (a.label === defaultRegion) { return -1; }
-            if (b.label === defaultRegion) { return 1; }
-            return 0;
-        });
-        
-        const region = await vscode.window.showQuickPick(
-            regionOptions,
-            { placeHolder: `Select deployment region (default: ${defaultRegion})` }
+        const { CreateAssistantPanel } = await import('../webview/createAssistantPanel.js');
+        CreateAssistantPanel.createOrShow(
+            this.extensionUri,
+            this.pineconeService,
+            this.treeDataProvider,
+            projectContext
         );
-        if (!region) { return; }
-
-        // Create the assistant
-        try {
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Creating assistant "${name}"...`,
-                cancellable: false
-            }, async () => {
-                await this.pineconeService.createAssistant(
-                    name, 
-                    region.label, 
-                    instructions || undefined,
-                    undefined, // metadata
-                    projectContext
-                );
-            });
-            
-            vscode.window.showInformationMessage(
-                `Assistant "${name}" created successfully. Upload files to start using it.`
-            );
-            void refreshExplorer({
-                treeDataProvider: this.treeDataProvider,
-                delayMs: 0,
-                focusExplorer: false
-            });
-        } catch (e: unknown) {
-            this.handleError('create assistant', e);
-        }
     }
 
     /**
@@ -199,7 +130,11 @@ export class AssistantCommands {
             });
             vscode.window.showInformationMessage(`Assistant "${name}" deleted successfully`);
 
-            void refreshExplorer({ treeDataProvider: this.treeDataProvider });
+            void refreshExplorer({
+                treeDataProvider: this.treeDataProvider,
+                delayMs: 0,
+                focusExplorer: false
+            });
         } catch (e: unknown) {
             this.handleError('delete assistant', e);
         }

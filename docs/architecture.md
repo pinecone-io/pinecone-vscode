@@ -52,18 +52,23 @@ src/
 ├── api/                  # API clients
 │   ├── client.ts         # Base HTTP client with auth
 │   ├── controlPlane.ts   # Index management, backups, restore jobs API
-│   ├── dataPlane.ts      # Vector operations API
-│   ├── assistantApi.ts   # Assistant API with streaming chat support
-│   ├── adminApi.ts       # Organization/Project API
+│   ├── dataPlane.ts      # Query/search/vector CRUD/import APIs
+│   ├── assistantApi.ts   # Assistant API (chat/files/tools)
+│   ├── inferenceApi.ts   # Embed/rerank/model discovery API
+│   ├── adminApi.ts       # Organization/Project/API key API
 │   ├── namespaceApi.ts   # Namespace management API
 │   └── types.ts          # TypeScript interfaces
 ├── commands/             # Command handlers
 │   ├── auth.ts           # Login/logout commands
 │   ├── index.commands.ts # Index CRUD, backups, restore commands
+│   ├── dataOps.commands.ts # Data operations panel launcher
 │   ├── assistant.commands.ts # Assistant commands
-│   ├── file.commands.ts  # File upload/delete
+│   ├── assistantTools.commands.ts # Assistant tools panel launcher
+│   ├── file.commands.ts  # File upload/delete (+ metadata batch prompt)
 │   ├── namespace.commands.ts # Namespace CRUD commands
-│   └── project.commands.ts   # Project management
+│   ├── project.commands.ts   # Project management (create/delete/rename)
+│   ├── apiKeys.commands.ts   # API key management panel launcher
+│   └── inference.commands.ts # Inference toolbox launcher
 ├── providers/            # VSCode providers
 │   ├── pineconeTreeDataProvider.ts # Tree view data
 │   └── treeItems.ts      # Tree item definitions
@@ -74,9 +79,14 @@ src/
 ├── webview/              # WebView panels
 │   ├── queryPanel.ts     # Index query interface
 │   ├── chatPanel.ts      # Assistant chat interface
+│   ├── dataOpsPanel.ts   # Vector/import operations panel
+│   ├── assistantToolsPanel.ts # Assistant tools panel
+│   ├── apiKeysPanel.ts   # Project API key management panel
+│   ├── inferencePanel.ts # Inference toolbox panel
 │   └── html/             # HTML templates
 ├── utils/                # Utilities
 │   ├── constants.ts      # API URLs, OAuth config
+│   ├── inputValidation.ts # Shared webview/command input parsing
 │   └── logger.ts         # Centralized logging utility
 └── test/                 # Tests
 ```
@@ -255,8 +265,9 @@ scoped to a specific project.
 - **DataPlaneApi**: Vector operations
   - `query()`: Vector-based similarity search for standard indexes
   - `search()`: Text-based search for indexes with integrated embeddings
-- **AssistantApi**: Assistants, streaming chat (SSE), file management
-- **AdminApi**: Organizations, projects
+- **AssistantApi**: Assistants, streaming chat (SSE), file management, context/evaluation tools
+- **InferenceApi**: Embed, rerank, model list/describe
+- **AdminApi**: Organizations, projects, API key management
 - **NamespaceApi**: Namespace CRUD operations within indexes
 
 #### Integrated Embeddings
@@ -386,14 +397,50 @@ only support Query and Delete operations; other menu items are hidden for pod in
 Interactive panels for complex operations:
 
 **QueryPanel** (`queryPanel.ts` + `query.html` + `query.js`):
-- Vector input form
-- Filter and namespace options
+- Vector or text search input form
+- Filter/namespace options
+- Advanced `search_records` fields selection
 - Results display
 
 **ChatPanel** (`chatPanel.ts` + `chat.html` + `chat.js`):
 - Chat message interface
 - Model selection
 - Citation display
+
+**DataOpsPanel** (`dataOpsPanel.ts` + `dataOps.html` + `dataOps.js`):
+- Structured forms for vector upsert/fetch/update/delete/list
+- Import lifecycle operation (start)
+- Operation results rendered inline under each section using match-style cards/tables
+
+**AssistantToolsPanel** (`assistantToolsPanel.ts` + `assistantTools.html` + `assistantTools.js`):
+- Mode-scoped dialogs opened via separate commands:
+  - Update Assistant
+  - Retrieve Context
+  - Evaluate Answer
+- Retrieve/evaluate outputs rendered in query-style match cards/tables
+
+**CreateIndexPanel** (`createIndexPanel.ts` + `createIndex.html` + `createIndex.js`):
+- Full create-index workflow in a dedicated dialog (standard vs integrated embeddings)
+- Cloud/region/model/dimension dynamic form behavior
+
+**ConfigureIndexPanel** (`configureIndexPanel.ts` + `configureIndex.html` + `configureIndex.js`):
+- Dedicated configuration dialog for deletion protection + tags
+- Loads current index configuration before edit
+
+**UploadMetadataDialog** (`uploadMetadataDialog.ts` + `uploadMetadata.html` + `uploadMetadata.js`):
+- Per-file metadata entry for assistant uploads
+- Optional list-level metadata fan-out to all selected files
+
+**ApiKeysPanel** (`apiKeysPanel.ts` + `apiKeys.html` + `apiKeys.js`):
+- List/create/revoke project API keys
+- One-time secret display with copy action on create
+- Multi-select role assignment on create with role-mode exclusivity:
+  - either one project role (`ProjectEditor` or `ProjectViewer`)
+  - or no project role plus control/data plane roles with editor/viewer exclusivity per plane
+
+**InferencePanel** (`inferencePanel.ts` + `inference.html` + `inference.js`):
+- Embed and rerank forms
+- Model dropdowns hydrated from `listModels`
 
 Communication pattern:
 ```
@@ -432,22 +479,22 @@ TreeDataProvider.refresh()
 ### Command Flow (e.g., Create Index)
 
 ```
-User: Command Palette → "Create Index"
+User: Context menu → "Create Index"
         │
         ▼
 IndexCommands.createIndex()
         │
         ▼
-Show input boxes (name, dimension, metric)
+Open CreateIndexPanel webview dialog
         │
         ▼
-PineconeService.createIndex(config)
+User submits structured form payload
         │
         ▼
-ControlPlaneApi.createIndex()
+PineconeService.createIndex(...) or createIndexForModel(...)
         │
         ▼
-PineconeClient.request('POST', '/indexes', {body})
+ControlPlaneApi request + ready-state polling
         │
         ▼
 Show success message

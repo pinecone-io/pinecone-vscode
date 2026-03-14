@@ -45,7 +45,8 @@ interface ChatOptions {
  * Pinecone Assistants, including message history and citation display.
  */
 export class ChatPanel {
-    public static currentPanel: ChatPanel | undefined;
+    private static readonly _panelsByKey = new Map<string, ChatPanel>();
+
     private readonly _panel: vscode.WebviewPanel;
     private readonly _extensionUri: vscode.Uri;
     private _disposables: vscode.Disposable[] = [];
@@ -61,6 +62,8 @@ export class ChatPanel {
     private _streamingCitations: Citation[] = [];
     /** Prevents duplicate stream finalization when both message_end and socket end fire */
     private _streamFinalized: boolean = false;
+    private readonly _panelKey: string;
+    private _isDisposed = false;
 
     /**
      * Creates or reveals the chat panel.
@@ -84,12 +87,11 @@ export class ChatPanel {
         const column = vscode.window.activeTextEditor
             ? vscode.window.activeTextEditor.viewColumn
             : undefined;
-
-        if (ChatPanel.currentPanel) {
-            ChatPanel.currentPanel._panel.reveal(column);
-            if (ChatPanel.currentPanel._assistantName !== assistantName) {
-                ChatPanel.currentPanel.setAssistant(assistantName, host, projectContext);
-            }
+        const panelKey = ChatPanel.getPanelKey(assistantName, host, projectContext);
+        const existing = ChatPanel._panelsByKey.get(panelKey);
+        if (existing) {
+            existing._panel.reveal(column || vscode.ViewColumn.One);
+            existing.setAssistant(assistantName, host, projectContext);
             return;
         }
 
@@ -104,7 +106,7 @@ export class ChatPanel {
             }
         );
 
-        ChatPanel.currentPanel = new ChatPanel(panel, extensionUri, pineconeService, assistantName, host, projectContext);
+        new ChatPanel(panel, extensionUri, pineconeService, assistantName, host, projectContext, panelKey);
     }
 
     private constructor(
@@ -113,13 +115,16 @@ export class ChatPanel {
         private pineconeService: PineconeService,
         assistantName: string,
         host: string,
-        projectContext?: ProjectContext
+        projectContext?: ProjectContext,
+        panelKey?: string
     ) {
         this._panel = panel;
         this._extensionUri = extensionUri;
         this._assistantName = assistantName;
         this._host = host;
         this._projectContext = projectContext;
+        this._panelKey = panelKey || ChatPanel.getPanelKey(assistantName, host, projectContext);
+        ChatPanel._panelsByKey.set(this._panelKey, this);
 
         this._update();
 
@@ -166,7 +171,11 @@ export class ChatPanel {
     }
 
     public dispose() {
-        ChatPanel.currentPanel = undefined;
+        if (this._isDisposed) {
+            return;
+        }
+        this._isDisposed = true;
+        ChatPanel._panelsByKey.delete(this._panelKey);
         this._panel.dispose();
         while (this._disposables.length) {
             const disposable = this._disposables.pop();
@@ -233,6 +242,13 @@ export class ChatPanel {
             text += possible.charAt(Math.floor(Math.random() * possible.length));
         }
         return text;
+    }
+
+    private static getPanelKey(assistantName: string, host: string, projectContext?: ProjectContext): string {
+        const name = String(assistantName || '').trim().toLowerCase();
+        const normalizedHost = String(host || '').trim().toLowerCase();
+        const project = String(projectContext?.id || '').trim().toLowerCase();
+        return `${project || 'global'}::${normalizedHost}::${name}`;
     }
 
     /**

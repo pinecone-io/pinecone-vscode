@@ -14,6 +14,7 @@ import { AssistantModel, Organization, Project } from '../api/types';
 import { ProjectContext } from '../api/client';
 import { getErrorMessage } from '../utils/errorHandling';
 import { refreshExplorer } from '../utils/refreshExplorer';
+import { UploadMetadataDialog, UploadFileMetadata } from '../webview/uploadMetadataDialog';
 
 /**
  * Handles all file-related commands for Pinecone Assistants.
@@ -28,7 +29,8 @@ export class FileCommands {
      */
     constructor(
         private pineconeService: PineconeService,
-        private treeDataProvider: PineconeTreeDataProvider
+        private treeDataProvider: PineconeTreeDataProvider,
+        private extensionUri: vscode.Uri
     ) {}
 
     /**
@@ -77,6 +79,14 @@ export class FileCommands {
 
         if (!uris || uris.length === 0) { return; }
 
+        const metadataSelections = await UploadMetadataDialog.show(this.extensionUri, uris);
+        if (!metadataSelections) {
+            return;
+        }
+        const metadataByFilePath = new Map<string, Record<string, unknown> | undefined>(
+            metadataSelections.map((entry: UploadFileMetadata) => [entry.filePath, entry.metadata])
+        );
+
         // Upload files with progress
         await vscode.window.withProgress({
             location: vscode.ProgressLocation.Notification,
@@ -102,7 +112,7 @@ export class FileCommands {
                         host, 
                         assistantName, 
                         uri.fsPath,
-                        undefined, // metadata
+                        metadataByFilePath.get(uri.fsPath),
                         projectContext
                     );
                     completed++;
@@ -196,6 +206,52 @@ export class FileCommands {
                 const message = getErrorMessage(e);
                 vscode.window.showErrorMessage(`Failed to delete file: ${message}`);
             }
+        }
+    }
+
+    /**
+     * Opens file details dialog for an assistant file.
+     *
+     * Shows describe_file details including signed URL and preview.
+     */
+    async viewFileDetails(item: PineconeTreeItem): Promise<void> {
+        if (!item.resourceId || !item.metadata?.assistant) {
+            vscode.window.showErrorMessage('Unable to view file details: file information not available');
+            return;
+        }
+
+        const assistant = item.metadata.assistant as AssistantModel;
+        const project = item.metadata?.project as Project | undefined;
+        const organization = item.metadata?.organization as Organization | undefined;
+        const fileId = item.resourceId;
+        const assistantName = assistant.name;
+        const host = assistant.host;
+
+        // Extract project ID from composite parentId (format: "projectId:assistantName")
+        let projectId: string | undefined;
+        if (item.parentId) {
+            const colonIndex = item.parentId.indexOf(':');
+            projectId = colonIndex > 0 ? item.parentId.substring(0, colonIndex) : undefined;
+        }
+
+        const projectContext: ProjectContext | undefined = (projectId && project && organization)
+            ? { id: projectId, name: project.name, organizationId: organization.id }
+            : undefined;
+
+        try {
+            const { FileDetailsPanel } = await import('../webview/fileDetailsPanel.js');
+            FileDetailsPanel.createOrShow(
+                this.extensionUri,
+                this.pineconeService,
+                fileId,
+                item.label,
+                assistantName,
+                host,
+                projectContext
+            );
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            vscode.window.showErrorMessage(`Failed to open file details: ${message}`);
         }
     }
 }

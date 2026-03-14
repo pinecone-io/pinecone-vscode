@@ -260,6 +260,266 @@ export interface QueryResponse {
     };
 }
 
+// ============================================================================
+// Vector/Data Operations Types
+// ============================================================================
+
+/**
+ * Dense/sparse vector record stored in an index.
+ */
+export interface VectorRecord {
+    /** Unique vector identifier */
+    id: string;
+    /** Dense vector values */
+    values?: number[];
+    /** Optional sparse values for hybrid search */
+    sparse_values?: {
+        indices: number[];
+        values: number[];
+    };
+    /** Optional metadata payload */
+    metadata?: Metadata;
+}
+
+/**
+ * Request payload for upserting vectors.
+ */
+export interface UpsertVectorsRequest {
+    vectors: VectorRecord[];
+    namespace?: string;
+}
+
+/**
+ * Response payload for upsert operations.
+ */
+export interface UpsertVectorsResponse {
+    upsertedCount?: number;
+    upserted_count?: number;
+}
+
+/**
+ * Request payload for upserting text records to integrated embedding indexes.
+ */
+export interface UpsertRecordsRequest {
+    records: Array<Record<string, unknown>>;
+}
+
+/**
+ * Response payload for upserting text records.
+ */
+export interface UpsertRecordsResponse {
+    upsertedCount?: number;
+    upserted_count?: number;
+}
+
+/**
+ * Response payload for fetching vectors by ID.
+ */
+export interface FetchVectorsResponse {
+    namespace?: string;
+    vectors: Record<string, VectorRecord>;
+    usage?: {
+        read_units?: number;
+    };
+}
+
+/**
+ * Request payload for fetching vectors by metadata.
+ */
+export interface FetchVectorsByMetadataRequest {
+    filter: Record<string, unknown>;
+    namespace?: string;
+    limit?: number;
+    include_values?: boolean;
+    include_metadata?: boolean;
+}
+
+/**
+ * Response payload for fetching vectors by metadata.
+ */
+export interface FetchVectorsByMetadataResponse {
+    namespace?: string;
+    vectors?: VectorRecord[];
+    records?: VectorRecord[];
+    usage?: {
+        read_units?: number;
+    };
+}
+
+/**
+ * Request payload for updating one vector.
+ */
+export interface UpdateVectorRequest {
+    id: string;
+    values?: number[];
+    sparse_values?: {
+        indices: number[];
+        values: number[];
+    };
+    set_metadata?: Record<string, unknown>;
+    namespace?: string;
+}
+
+/**
+ * Request payload for updating vectors by metadata filter.
+ */
+export interface UpdateVectorsByMetadataRequest {
+    namespace?: string;
+    filter: Record<string, unknown>;
+    set_metadata?: Record<string, unknown>;
+    dry_run?: boolean;
+}
+
+/**
+ * Response payload for update-by-metadata operations.
+ */
+export interface UpdateVectorsByMetadataResponse {
+    matched_count?: number;
+    updated_count?: number;
+    dry_run?: boolean;
+}
+
+/**
+ * Request payload for deleting vectors.
+ */
+export interface DeleteVectorsRequest {
+    ids?: string[];
+    filter?: Record<string, unknown>;
+    delete_all?: boolean;
+    namespace?: string;
+}
+
+/**
+ * Response payload for listing vector IDs.
+ */
+export interface ListVectorIdsResponse {
+    vectors?: Array<{ id: string }>;
+    ids?: string[];
+    pagination?: {
+        next?: string;
+    };
+}
+
+/**
+ * Request payload for starting an import.
+ */
+export interface StartImportRequest {
+    uri: string;
+    integration_id?: string;
+    mode?: 'continue' | 'overwrite';
+    error_mode?: 'continue' | 'abort';
+    namespace?: string;
+}
+
+/**
+ * Represents a data import job.
+ */
+export interface ImportJob {
+    id: string;
+    status: string;
+    created_at?: string;
+    updated_at?: string;
+    namespace?: string;
+    uri?: string;
+    [key: string]: unknown;
+}
+
+/**
+ * Response payload when starting an import.
+ */
+export interface StartImportResponse {
+    id: string;
+    status?: string;
+}
+
+/**
+ * Response payload for listing import jobs.
+ */
+export interface ListImportsResponse {
+    data: ImportJob[];
+    pagination?: {
+        next?: string;
+    };
+}
+
+// ============================================================================
+// Inference Types
+// ============================================================================
+
+/**
+ * Request payload for embedding generation.
+ */
+export interface EmbedRequest {
+    model: string;
+    inputs: Array<Record<string, unknown>>;
+    parameters?: Record<string, unknown>;
+}
+
+/**
+ * Response payload for embedding generation.
+ */
+export interface EmbedResponse {
+    model?: string;
+    data: Array<{
+        index?: number;
+        values?: number[];
+        sparse_values?: {
+            indices: number[];
+            values: number[];
+        };
+    }>;
+    usage?: Record<string, unknown>;
+}
+
+/**
+ * Request payload for reranking.
+ */
+export interface RerankRequest {
+    model: string;
+    query: string;
+    documents: Array<Record<string, unknown>>;
+    top_n?: number;
+    return_documents?: boolean;
+    parameters?: Record<string, unknown>;
+}
+
+/**
+ * Response payload for reranking.
+ */
+export interface RerankResponse {
+    data?: Array<{
+        index: number;
+        score: number;
+        document?: string | Record<string, unknown>;
+    }>;
+    results?: Array<{
+        index: number;
+        score: number;
+        document?: string | Record<string, unknown>;
+    }>;
+    usage?: Record<string, unknown>;
+}
+
+/**
+ * Represents an inference model.
+ */
+export interface InferenceModel {
+    name: string;
+    model?: string;
+    id?: string;
+    type?: string;
+    provider?: string;
+    [key: string]: unknown;
+}
+
+/**
+ * Response payload for listing inference models.
+ */
+export interface ListInferenceModelsResponse {
+    data?: InferenceModel[];
+    models?: InferenceModel[];
+}
+
 /**
  * Represents a Pinecone Assistant.
  * 
@@ -283,6 +543,14 @@ export interface AssistantModel {
     created_at: string;
     /** ISO 8601 last update timestamp */
     updated_at: string;
+}
+
+/**
+ * Request payload for updating an Assistant.
+ */
+export interface UpdateAssistantRequest {
+    instructions?: string;
+    metadata?: Metadata;
 }
 
 /**
@@ -367,6 +635,46 @@ export interface Citation {
 }
 
 /**
+ * Request payload for assistant context retrieval.
+ */
+export interface AssistantContextRequest {
+    query: string;
+    top_k?: number;
+    filter?: Record<string, unknown>;
+}
+
+/**
+ * Response payload for assistant context retrieval.
+ */
+export interface AssistantContextResponse {
+    context?: Array<{
+        text?: string;
+        score?: number;
+        [key: string]: unknown;
+    }>;
+    [key: string]: unknown;
+}
+
+/**
+ * Request payload for assistant answer evaluation.
+ */
+export interface AssistantEvaluationRequest {
+    question: string;
+    answer: string;
+    ground_truth_answer: string;
+}
+
+/**
+ * Response payload for assistant answer evaluation.
+ */
+export interface AssistantEvaluationResponse {
+    score?: number;
+    metrics?: Record<string, number>;
+    feedback?: string;
+    [key: string]: unknown;
+}
+
+/**
  * Represents a Pinecone organization.
  * 
  * Organizations are the top-level entity containing projects.
@@ -422,6 +730,14 @@ export interface CreateProjectParams {
      * WARNING: This setting is irreversible once enabled.
      */
     force_encryption_with_cmek?: boolean;
+}
+
+/**
+ * Parameters for updating a project.
+ */
+export interface UpdateProjectParams {
+    /** Updated project name */
+    name: string;
 }
 
 /**

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Configure Index</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Configure Index: <span id="index-name">${indexName}</span></h2>
+        </div>
+
+        <section class="card">
+            <div class="form-group">
+                <label for="deletion-protection">Deletion Protection</label>
+                <select id="deletion-protection">
+                    <option value="disabled">Disabled</option>
+                    <option value="enabled">Enabled</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>Tags</h3>
+            <p class="hint">Add, remove, or update tags. Duplicate keys are not allowed.</p>
+            <div id="tags-list"></div>
+            <button id="add-tag-btn" type="button" class="secondary">Add Tag</button>
+        </section>
+
+        <div id="error" class="error hidden"></div>
+        <div id="success" class="success hidden"></div>
+
+        <div class="actions">
+            <button id="save-btn">Save Configuration</button>
+        </div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

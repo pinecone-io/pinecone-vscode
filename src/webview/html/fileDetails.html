@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}'; frame-src https: http: data: blob:;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>File Details</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>File Details: <span id="file-label">${fileLabel}</span></h2>
+            <button id="refresh-btn" class="secondary">Refresh</button>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+
+        <section class="results-section">
+            <h3>Details</h3>
+            <div id="details-card" class="match-item hidden">
+                <table id="details-table" class="metadata-table"></table>
+            </div>
+            <div id="metadata-card" class="match-item hidden">
+                <h4>Metadata</h4>
+                <table id="metadata-table" class="metadata-table"></table>
+            </div>
+        </section>
+
+        <section class="results-section">
+            <h3>Document Preview</h3>
+            <div id="preview-error" class="hint hidden"></div>
+            <iframe id="preview-pdf" class="pdf-preview hidden" title="PDF preview"></iframe>
+            <pre id="preview-text" class="text-content hidden"></pre>
+        </section>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

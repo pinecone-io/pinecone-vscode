@@ -424,6 +424,12 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
         const projectId = element.resourceId;
         const project = element.metadata?.project as Project | undefined;
         const organization = element.metadata?.organization as Organization | undefined;
+
+        // Persist the active project context for toolbar/dialog workflows (e.g. Inference Toolbox).
+        if (project && organization && !element.metadata?.isEmpty) {
+            this.pineconeService.setTargetOrganization({ id: organization.id, name: organization.name });
+            this.pineconeService.setTargetProject({ id: project.id, name: project.name });
+        }
         
         // Pass both project and organization to child items so they can build
         // the full project context for API calls

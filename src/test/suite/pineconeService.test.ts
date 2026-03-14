@@ -103,6 +103,88 @@ suite('PineconeService (Production Class)', () => {
         });
     });
 
+    test('setTargetProject uses full project context when target organization exists', () => {
+        const auth = new MockAuthService();
+        const service = new PineconeService(auth as unknown as AuthService);
+
+        const clientStub = {
+            projectId: undefined as string | undefined,
+            projectContext: undefined as ProjectContext | undefined,
+            setProjectId(projectId: string | undefined): void {
+                this.projectId = projectId;
+            },
+            getProjectId(): string | undefined {
+                return this.projectId;
+            },
+            setProjectContext(context: ProjectContext | undefined): void {
+                this.projectContext = context;
+                this.projectId = context?.id;
+            },
+            getProjectContext(): ProjectContext | undefined {
+                return this.projectContext;
+            }
+        };
+
+        const configStub = {
+            setTargetProject: (_project: { id: string; name: string } | undefined): void => undefined,
+            getTargetOrganization: (): { id: string; name: string } | undefined => ({ id: 'org-9', name: 'Org Nine' })
+        };
+
+        (service as unknown as { client: typeof clientStub }).client = clientStub;
+        (service as unknown as { configService: typeof configStub }).configService = configStub;
+
+        service.setTargetProject({ id: 'proj-9', name: 'Project Nine' });
+
+        assert.strictEqual(clientStub.projectId, 'proj-9');
+        assert.deepStrictEqual(clientStub.projectContext, {
+            id: 'proj-9',
+            name: 'Project Nine',
+            organizationId: 'org-9'
+        });
+    });
+
+    test('setTargetProject falls back to project-id context when organization is unavailable', () => {
+        const auth = new MockAuthService();
+        const service = new PineconeService(auth as unknown as AuthService);
+
+        const calls: string[] = [];
+        const clientStub = {
+            projectId: undefined as string | undefined,
+            projectContext: { id: 'old', name: 'Old', organizationId: 'org-old' } as ProjectContext | undefined,
+            setProjectId(projectId: string | undefined): void {
+                calls.push(`setProjectId:${projectId || ''}`);
+                this.projectId = projectId;
+            },
+            getProjectId(): string | undefined {
+                return this.projectId;
+            },
+            setProjectContext(context: ProjectContext | undefined): void {
+                calls.push('setProjectContext');
+                this.projectContext = context;
+                if (context) {
+                    this.projectId = context.id;
+                }
+            },
+            getProjectContext(): ProjectContext | undefined {
+                return this.projectContext;
+            }
+        };
+
+        const configStub = {
+            setTargetProject: (_project: { id: string; name: string } | undefined): void => undefined,
+            getTargetOrganization: (): { id: string; name: string } | undefined => undefined
+        };
+
+        (service as unknown as { client: typeof clientStub }).client = clientStub;
+        (service as unknown as { configService: typeof configStub }).configService = configStub;
+
+        service.setTargetProject({ id: 'proj-10', name: 'Project Ten' });
+
+        assert.strictEqual(clientStub.projectId, 'proj-10');
+        assert.strictEqual(clientStub.projectContext, undefined);
+        assert.deepStrictEqual(calls, ['setProjectContext', 'setProjectId:proj-10']);
+    });
+
     test('listIndexes delegates to ControlPlaneApi and forwards per-request project context', async () => {
         const auth = new MockAuthService();
         const service = new PineconeService(auth as unknown as AuthService);

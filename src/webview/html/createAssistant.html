@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Create Assistant</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Create Assistant</h2>
+        </div>
+
+        <section class="card">
+            <div class="form-group">
+                <label for="assistant-name">Assistant Name</label>
+                <input id="assistant-name" type="text" placeholder="my-assistant">
+            </div>
+
+            <div class="form-group">
+                <label for="assistant-region">Region</label>
+                <select id="assistant-region">
+                    <option value="us">us</option>
+                    <option value="eu">eu</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="assistant-instructions">Assistant Instructions (optional)</label>
+                <textarea id="assistant-instructions" rows="4" placeholder="You are a helpful assistant that answers questions about our documentation."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="assistant-metadata">Assistant Metadata (JSON, optional)</label>
+                <textarea id="assistant-metadata" rows="3" placeholder='{"team":"support"}'></textarea>
+            </div>
+
+            <button id="create-btn">Create Assistant</button>
+        </section>
+
+        <div id="error" class="error hidden"></div>
+        <div id="success" class="success hidden"></div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

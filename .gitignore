@@ -2,6 +2,7 @@ node_modules
 out
 dist
 .vscode-test
+.coverage
 *.vsix
 .DS_Store
 .env

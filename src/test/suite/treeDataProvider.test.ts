@@ -56,6 +56,7 @@ class MockPineconeService {
     public files: FileModel[] = [];
 
     public targetOrganization: { id: string; name: string } | undefined;
+    public targetProject: { id: string; name: string } | undefined;
     public lastListIndexesContext: ProjectContext | undefined;
     public lastListAssistantsContext: ProjectContext | undefined;
 
@@ -65,6 +66,10 @@ class MockPineconeService {
 
     setTargetOrganization(org: { id: string; name: string } | undefined): void {
         this.targetOrganization = org;
+    }
+
+    setTargetProject(project: { id: string; name: string } | undefined): void {
+        this.targetProject = project;
     }
 
     async listProjects(_organizationId?: string): Promise<{ success: boolean; data: Project[]; error?: string }> {
@@ -195,6 +200,29 @@ suite('PineconeTreeDataProvider (Production Class)', () => {
         assert.strictEqual(projects[0].itemType, PineconeItemType.Project);
         assert.strictEqual(pineconeService.targetOrganization?.id, 'org-1');
         assert.deepStrictEqual(authService.switchedOrganizationIds, ['org-1']);
+    });
+
+    test('expanding project persists target project for toolbar workflows', async () => {
+        authService.context = AUTH_CONTEXTS.USER_TOKEN;
+
+        const project = makeProject();
+        const org = makeOrganization();
+        const projectNode = new PineconeTreeItem(
+            project.name,
+            PineconeItemType.Project,
+            vscode.TreeItemCollapsibleState.Collapsed,
+            project.id,
+            org.id,
+            { project, organization: org }
+        );
+
+        const categories = await provider.getChildren(projectNode);
+
+        assert.strictEqual(categories.length, 2);
+        assert.strictEqual(categories[0].itemType, PineconeItemType.DatabaseCategory);
+        assert.strictEqual(categories[1].itemType, PineconeItemType.AssistantCategory);
+        assert.deepStrictEqual(pineconeService.targetOrganization, { id: org.id, name: org.name });
+        assert.deepStrictEqual(pineconeService.targetProject, { id: project.id, name: project.name });
     });
 
     test('passes full project context when listing indexes under database category', async () => {

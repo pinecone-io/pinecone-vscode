@@ -8,6 +8,7 @@
 import * as assert from 'assert';
 import { PineconeApiError } from '../../api/client';
 import { IndexModel, AssistantModel, QueryResponse, ChatResponse } from '../../api/types';
+import { API_VERSION } from '../../utils/constants';
 
 suite('API Types Test Suite', () => {
 
@@ -136,5 +137,11 @@ suite('PineconeApiError Test Suite', () => {
         
         assert.ok(error instanceof Error);
         assert.ok(error instanceof PineconeApiError);
+    });
+});
+
+suite('API Versioning', () => {
+    test('should pin current API version header value', () => {
+        assert.strictEqual(API_VERSION, '2025-10');
     });
 });

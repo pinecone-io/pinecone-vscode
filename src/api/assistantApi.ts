@@ -20,6 +20,11 @@ import {
     FileModel, 
     ChatResponse, 
     Metadata,
+    UpdateAssistantRequest,
+    AssistantContextRequest,
+    AssistantContextResponse,
+    AssistantEvaluationRequest,
+    AssistantEvaluationResponse,
     StreamChunk,
     StreamMessageStart,
     StreamContentDelta,
@@ -340,6 +345,22 @@ export class AssistantApi {
     async describeAssistant(name: string, projectContext?: ProjectContext): Promise<AssistantModel> {
         // Control plane: /assistant/assistants/{name}
         return this.client.request<AssistantModel>('GET', `/assistant/assistants/${name}`, {
+            projectContext
+        });
+    }
+
+    /**
+     * Updates an assistant's instructions or metadata.
+     *
+     * Control plane operation.
+     */
+    async updateAssistant(
+        name: string,
+        request: UpdateAssistantRequest,
+        projectContext?: ProjectContext
+    ): Promise<AssistantModel> {
+        return this.client.request<AssistantModel>('PATCH', `/assistant/assistants/${name}`, {
+            body: request,
             projectContext
         });
     }
@@ -831,14 +852,39 @@ export class AssistantApi {
      * @returns Array of file models with processing status
      * @throws {PineconeApiError} When the request fails
      */
-    async listFiles(host: string, assistantName: string, projectContext?: ProjectContext): Promise<FileModel[]> {
+    async listFiles(
+        host: string,
+        assistantName: string,
+        projectContext?: ProjectContext,
+        metadataFilter?: Record<string, unknown>
+    ): Promise<FileModel[]> {
         // Data plane: https://{host}/assistant/files/{assistantName}
         // Note: normalizeHost handles cases where host may already include https://
+        const queryParams = metadataFilter ? { metadata: JSON.stringify(metadataFilter) } : undefined;
         const response = await this.client.request<{ files: FileModel[] }>('GET', `/assistant/files/${assistantName}`, {
             host: normalizeHost(host),
+            queryParams,
             projectContext
         });
         return response.files || [];
+    }
+
+    /**
+     * Describes one assistant file.
+     */
+    async describeFile(
+        host: string,
+        assistantName: string,
+        fileId: string,
+        projectContext?: ProjectContext,
+        includeUrl: boolean = false
+    ): Promise<FileModel> {
+        const queryParams = includeUrl ? { include_url: 'true' } : undefined;
+        return this.client.request<FileModel>('GET', `/assistant/files/${assistantName}/${fileId}`, {
+            host: normalizeHost(host),
+            queryParams,
+            projectContext
+        });
     }
 
     /**
@@ -907,6 +953,38 @@ export class AssistantApi {
         return this.client.request<FileModel>('POST', `/assistant/files/${assistantName}`, {
             host: normalizeHost(host),
             body: formData,
+            projectContext
+        });
+    }
+
+    /**
+     * Retrieves context snippets for an assistant query.
+     */
+    async retrieveContext(
+        host: string,
+        assistantName: string,
+        request: AssistantContextRequest,
+        projectContext?: ProjectContext
+    ): Promise<AssistantContextResponse> {
+        return this.client.request<AssistantContextResponse>('POST', `/assistant/chat/${assistantName}/context`, {
+            host: normalizeHost(host),
+            body: request,
+            projectContext
+        });
+    }
+
+    /**
+     * Evaluates an assistant answer.
+     */
+    async evaluateAnswer(
+        host: string,
+        _assistantName: string,
+        request: AssistantEvaluationRequest,
+        projectContext?: ProjectContext
+    ): Promise<AssistantEvaluationResponse> {
+        return this.client.request<AssistantEvaluationResponse>('POST', '/assistant/evaluation/metrics/alignment', {
+            host: normalizeHost(host),
+            body: request,
             projectContext
         });
     }

@@ -15,7 +15,7 @@
 
 import * as vscode from 'vscode';
 import fetch from 'node-fetch';
-import { Organization, Project, CreateProjectParams, APIKey, APIKeyWithSecret } from './types';
+import { Organization, Project, CreateProjectParams, UpdateProjectParams, APIKey, APIKeyWithSecret } from './types';
 import { OAUTH_CONFIG, getApiBaseUrl, API_VERSION } from '../utils/constants';
 
 // ============================================================================
@@ -295,6 +295,38 @@ export class AdminApiClient {
         }
     }
 
+    /**
+     * Updates a project's name.
+     *
+     * @param accessToken - Valid OAuth/JWT access token
+     * @param projectId - Project ID
+     * @param params - Update payload
+     */
+    async updateProject(accessToken: string, projectId: string, params: UpdateProjectParams): Promise<Project> {
+        const config = vscode.workspace.getConfiguration('pinecone');
+        const environment = config.get<'production' | 'staging'>('environment', 'production');
+        const baseUrl = getApiBaseUrl(environment);
+
+        const response = await fetch(`${baseUrl}/admin/projects/${projectId}`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'X-Pinecone-Api-Version': API_VERSION
+            },
+            body: JSON.stringify({
+                name: params.name
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to update project: ${errorText || response.statusText}`);
+        }
+
+        return response.json() as Promise<Project>;
+    }
+
     // ========================================================================
     // API Key Management
     // ========================================================================
@@ -327,19 +359,25 @@ export class AdminApiClient {
     async createAPIKey(
         accessToken: string, 
         projectId: string, 
-        params: CreateAPIKeyParams
+        params: CreateAPIKeyParams,
+        organizationId?: string
     ): Promise<APIKeyWithSecret> {
         const config = vscode.workspace.getConfiguration('pinecone');
         const environment = config.get<'production' | 'staging'>('environment', 'production');
         const baseUrl = getApiBaseUrl(environment);
 
+        const headers: Record<string, string> = {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'X-Pinecone-Api-Version': API_VERSION
+        };
+        if (organizationId) {
+            headers['X-Organization-Id'] = organizationId;
+        }
+
         const response = await fetch(`${baseUrl}/admin/projects/${projectId}/api-keys`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-                'X-Pinecone-Api-Version': API_VERSION
-            },
+            headers,
             body: JSON.stringify({
                 name: params.name,
                 roles: params.roles || ['ProjectEditor']
@@ -365,16 +403,21 @@ export class AdminApiClient {
      * @returns Array of API key metadata
      * @throws {Error} When listing fails
      */
-    async listAPIKeys(accessToken: string, projectId: string): Promise<APIKey[]> {
+    async listAPIKeys(accessToken: string, projectId: string, organizationId?: string): Promise<APIKey[]> {
         const config = vscode.workspace.getConfiguration('pinecone');
         const environment = config.get<'production' | 'staging'>('environment', 'production');
         const baseUrl = getApiBaseUrl(environment);
 
+        const headers: Record<string, string> = {
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Pinecone-Api-Version': API_VERSION
+        };
+        if (organizationId) {
+            headers['X-Organization-Id'] = organizationId;
+        }
+
         const response = await fetch(`${baseUrl}/admin/projects/${projectId}/api-keys`, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'X-Pinecone-Api-Version': API_VERSION
-            }
+            headers
         });
 
         if (!response.ok) {

@@ -4,20 +4,22 @@ This document describes how the extension pins and validates Pinecone API behavi
 
 ## Current Version
 
-The extension sends `X-Pinecone-Api-Version: 2025-04` on all API requests.
+The extension sends `X-Pinecone-Api-Version: 2025-10` on API requests.
 
 Source of truth:
 
 - `src/utils/constants.ts`
 - `src/api/client.ts`
+- `src/api/adminApi.ts` (direct `fetch` calls)
 
 ## Request Routing Model
 
-The extension uses three endpoint families:
+The extension uses four endpoint families:
 
-1. Control plane (`https://api.pinecone.io`): index/project/backup/assistant control operations.
-2. Data plane (`https://{index-host}`): query/search/namespaces/index stats.
-3. Assistant data plane (`https://{assistant-host}`): chat and file operations.
+1. Control plane (`https://api.pinecone.io`): index/backup/restore/assistant control/inference/admin operations.
+2. Data plane (`https://{index-host}`): query/search/vector ops/imports/namespaces/index stats.
+3. Assistant data plane (`https://{assistant-host}`): chat/files/context/evaluation.
+4. OAuth endpoints (`https://auth.pinecone.io`): login/token exchange.
 
 Host inputs are normalized centrally via `src/api/host.ts`, so both `host` and `https://host` are accepted.
 
@@ -42,12 +44,38 @@ Host inputs are normalized centrally via `src/api/host.ts`, so both `host` and `
 - `GET /assistant/assistants`
 - `POST /assistant/assistants`
 - `GET /assistant/assistants/{name}`
+- `PATCH /assistant/assistants/{name}`
 - `DELETE /assistant/assistants/{name}`
+- `POST /inference/embed`
+- `POST /inference/rerank`
+- `GET /inference/models`
+- `GET /inference/models/{model}`
+- `GET /admin/organizations`
+- `GET /admin/projects`
+- `POST /admin/projects`
+- `GET /admin/projects/{projectId}`
+- `PATCH /admin/projects/{projectId}`
+- `DELETE /admin/projects/{projectId}`
+- `GET /admin/projects/{projectId}/api-keys`
+- `POST /admin/projects/{projectId}/api-keys`
+- `DELETE /admin/api-keys/{keyId}`
 
 ### Data plane (index host)
 
 - `POST /query`
 - `POST /records/namespaces/{namespace}/search`
+- `POST /vectors/upsert`
+- `POST /records/namespaces/{namespace}/upsert`
+- `GET /vectors/fetch`
+- `POST /vectors/fetch_by_metadata`
+- `POST /vectors/update`
+- `POST /vectors/update_by_metadata`
+- `POST /vectors/delete`
+- `GET /vectors/list`
+- `POST /imports`
+- `GET /imports`
+- `GET /imports/{importId}`
+- `POST /imports/{importId}/cancel`
 - `GET /namespaces`
 - `POST /namespaces`
 - `GET /namespaces/{namespace}`
@@ -59,7 +87,10 @@ Host inputs are normalized centrally via `src/api/host.ts`, so both `host` and `
 - `POST /assistant/chat/{assistantName}`
 - `GET /assistant/files/{assistantName}`
 - `POST /assistant/files/{assistantName}`
+- `GET /assistant/files/{assistantName}/{fileId}`
 - `DELETE /assistant/files/{assistantName}/{fileId}`
+- `POST /assistant/context/{assistantName}`
+- `POST /assistant/evaluate/{assistantName}`
 
 ## Version Upgrade Checklist
 
@@ -77,8 +108,9 @@ Host inputs are normalized centrally via `src/api/host.ts`, so both `host` and `
 
 ## Regression Requirements
 
-Any API-path or auth behavior change must include at least one failing-before/passing-after test for:
+Any API-path, auth-header, or version change must include at least one failing-before/passing-after test for:
 
 - host normalization (`host` vs `https://host`),
 - authentication failure classification,
-- refresh/UI update behavior when command-side mutations complete.
+- request shape/path for touched endpoints,
+- refresh/UI update behavior for command-side mutations.

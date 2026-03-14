@@ -14,6 +14,7 @@
 import * as vscode from 'vscode';
 import * as http from 'http';
 import * as crypto from 'crypto';
+import * as os from 'os';
 import fetch from 'node-fetch';
 import { ConfigService } from './configService';
 import { AdminApiClient } from '../api/adminApi';
@@ -132,6 +133,10 @@ export class AuthService {
     
     /** Cache for service account tokens to avoid repeated token exchanges */
     private serviceAccountTokenCache: CachedToken | null = null;
+    /** Serializes OAuth refresh/scope-switch operations to avoid refresh-token races */
+    private tokenRefreshQueue: Promise<void> = Promise.resolve();
+    /** Prevent duplicate managed key creation for the same project under concurrent requests */
+    private managedKeyCreationInFlight = new Map<string, Promise<string>>();
 
     /**
      * Creates a new AuthService instance.
@@ -353,19 +358,31 @@ export class AuthService {
         }
 
         try {
-            const refreshed = await this.refreshToken(currentToken.refresh_token, organizationId);
-            this.saveOAuthToken(refreshed);
+            return await this.runTokenRefreshExclusive(async () => {
+                const latestToken = this.configService.getSecrets().oauth2_token;
+                if (!latestToken?.refresh_token) {
+                    return false;
+                }
 
-            const refreshedOrgId = this.getTokenOrganizationId(refreshed.access_token);
-            if (refreshedOrgId !== organizationId) {
-                log.warn(`Requested org scope "${organizationId}" but received token for "${refreshedOrgId || 'unknown'}".`);
-                return false;
-            }
+                const latestOrgId = this.getTokenOrganizationId(latestToken.access_token);
+                if (latestOrgId === organizationId) {
+                    return true;
+                }
 
-            // Do not fire auth-change refresh events when only org scope changes.
-            // Auth context and authenticated state remain unchanged, and emitting
-            // this event can create tree refresh loops when multiple orgs are expanded.
-            return true;
+                const refreshed = await this.refreshToken(latestToken.refresh_token, organizationId);
+                this.saveOAuthToken(refreshed);
+
+                const refreshedOrgId = this.getTokenOrganizationId(refreshed.access_token);
+                if (refreshedOrgId !== organizationId) {
+                    log.warn(`Requested org scope "${organizationId}" but received token for "${refreshedOrgId || 'unknown'}".`);
+                    return false;
+                }
+
+                // Do not fire auth-change refresh events when only org scope changes.
+                // Auth context and authenticated state remain unchanged, and emitting
+                // this event can create tree refresh loops when multiple orgs are expanded.
+                return true;
+            });
         } catch (error: unknown) {
             log.warn(`Failed to switch OAuth organization to "${organizationId}":`, error);
             return false;
@@ -512,8 +529,22 @@ export class AuthService {
             if (timeUntilExpiry < 90000) {
                 if (token.refresh_token) {
                     try {
-                        token = await this.refreshToken(token.refresh_token);
-                        this.saveOAuthToken(token);
+                        token = await this.runTokenRefreshExclusive(async () => {
+                            const latestToken = this.configService.getSecrets().oauth2_token;
+                            if (!latestToken?.refresh_token) {
+                                throw new Error('No refresh token available');
+                            }
+
+                            const latestExpiryTime = new Date(latestToken.expiry).getTime();
+                            const latestTimeUntilExpiry = latestExpiryTime - Date.now();
+                            if (latestTimeUntilExpiry >= 90000) {
+                                return latestToken;
+                            }
+
+                            const refreshed = await this.refreshToken(latestToken.refresh_token);
+                            this.saveOAuthToken(refreshed);
+                            return refreshed;
+                        });
                     } catch (error: unknown) {
                         await this.handleAuthFailure('Token expired. Please log in again.');
                         throw new Error('Token expired and refresh failed');
@@ -541,6 +572,27 @@ export class AuthService {
         }
         
         throw new Error('Not authenticated. Please log in or configure credentials.');
+    }
+
+    /**
+     * Ensures token refresh operations run one at a time.
+     *
+     * OAuth refresh tokens can rotate; concurrent refreshes with stale tokens
+     * can invalidate session state. This queue prevents that race.
+     */
+    private async runTokenRefreshExclusive<T>(operation: () => Promise<T>): Promise<T> {
+        const previous = this.tokenRefreshQueue;
+        let release!: () => void;
+        this.tokenRefreshQueue = new Promise<void>(resolve => {
+            release = resolve;
+        });
+
+        await previous;
+        try {
+            return await operation();
+        } finally {
+            release();
+        }
     }
 
     /**
@@ -769,42 +821,92 @@ export class AuthService {
             log.debug(`Using existing managed API key for project ${projectId}`);
             return existingKey.value;
         }
-        
-        // Need to create a new managed key
-        log.info(`Creating managed API key for project ${projectName} (${projectId})`);
-        
-        // Get current access token for Admin API call
-        const accessToken = await this.getAccessToken();
-        
-        // Create the key via Admin API
-        const adminApi = new AdminApiClient();
-        const keyName = `${VSCODE_API_KEY_PREFIX}${Date.now()}`;
-        
-        const keyWithSecret = await adminApi.createAPIKey(accessToken, projectId, {
-            name: keyName,
-            roles: ['ProjectEditor']
-        });
-        
-        // Store the managed key in secrets
-        const newManagedKey: ManagedKey = {
-            name: keyName,
-            id: keyWithSecret.key.id,
-            value: keyWithSecret.value,
-            origin: 'vscode_managed',
-            project_id: projectId,
-            project_name: projectName,
-            organization_id: organizationId
-        };
-        
-        // Ensure managedKeys is a proper object before assigning
-        const updatedKeys: Record<string, ManagedKey> = { ...managedKeys };
-        updatedKeys[projectId] = newManagedKey;
-        secrets.project_api_keys = updatedKeys;
-        this.configService.saveSecrets(secrets);
-        
-        log.info(`Created and stored managed API key ${keyWithSecret.key.id} for project ${projectName}`);
-        
-        return keyWithSecret.value;
+
+        const existingCreation = this.managedKeyCreationInFlight.get(projectId);
+        if (existingCreation) {
+            return existingCreation;
+        }
+
+        const createPromise = (async (): Promise<string> => {
+            // Need to create a new managed key
+            log.info(`Creating managed API key for project ${projectName} (${projectId})`);
+
+            if (context === AUTH_CONTEXTS.USER_TOKEN) {
+                const switched = await this.switchOrganization(organizationId);
+                if (!switched) {
+                    throw new Error(`Could not switch authentication scope to organization "${organizationId}".`);
+                }
+            }
+
+            // Get current access token for Admin API call
+            const accessToken = await this.getAccessToken();
+
+            // Create the key via Admin API
+            const adminApi = new AdminApiClient();
+            const keyName = this.getManagedKeyName();
+
+            // If this machine has created a key before but local cache was cleared,
+            // rotate the stale key with the same deterministic name so we don't
+            // accumulate timestamped duplicates.
+            const existingProjectKeys = await adminApi.listAPIKeys(accessToken, projectId, organizationId);
+            const staleKeys = existingProjectKeys.filter(key => key.name === keyName);
+            for (const staleKey of staleKeys) {
+                try {
+                    await adminApi.deleteAPIKey(accessToken, staleKey.id);
+                    log.info(`Deleted stale managed API key ${staleKey.id} before recreate`);
+                } catch (error: unknown) {
+                    log.warn(`Failed to delete stale managed API key ${staleKey.id}:`, error);
+                }
+            }
+
+            const keyWithSecret = await adminApi.createAPIKey(accessToken, projectId, {
+                name: keyName,
+                roles: ['ProjectEditor']
+            }, organizationId);
+
+            // Store the managed key in secrets
+            const newManagedKey: ManagedKey = {
+                name: keyName,
+                id: keyWithSecret.key.id,
+                value: keyWithSecret.value,
+                origin: 'vscode_managed',
+                project_id: projectId,
+                project_name: projectName,
+                organization_id: organizationId
+            };
+
+            // Ensure managedKeys is a proper object before assigning
+            const updatedKeys: Record<string, ManagedKey> = { ...managedKeys };
+            updatedKeys[projectId] = newManagedKey;
+            secrets.project_api_keys = updatedKeys;
+            this.configService.saveSecrets(secrets);
+
+            log.info(`Created and stored managed API key ${keyWithSecret.key.id} for project ${projectName}`);
+            return keyWithSecret.value;
+        })();
+
+        this.managedKeyCreationInFlight.set(projectId, createPromise);
+        try {
+            return await createPromise;
+        } finally {
+            this.managedKeyCreationInFlight.delete(projectId);
+        }
+    }
+
+    /**
+     * Builds a deterministic managed key name for this machine.
+     *
+     * Using a stable machine fingerprint avoids accumulating many timestamped
+     * keys after local cache clears while keeping keys distinct across machines.
+     */
+    private getManagedKeyName(): string {
+        const hostName = os.hostname();
+        const fingerprint = crypto
+            .createHash('sha256')
+            .update(hostName)
+            .digest('hex')
+            .slice(0, 12);
+        return `${VSCODE_API_KEY_PREFIX}${fingerprint}`;
     }
 
     /**
@@ -832,6 +934,9 @@ export class AuthService {
         // Delete from server if requested
         if (deleteFromServer && existingKey.origin === 'vscode_managed') {
             try {
+                if (this.getAuthContext() === AUTH_CONTEXTS.USER_TOKEN && existingKey.organization_id) {
+                    await this.switchOrganization(existingKey.organization_id);
+                }
                 const accessToken = await this.getAccessToken();
                 const adminApi = new AdminApiClient();
                 await adminApi.deleteAPIKey(accessToken, existingKey.id);

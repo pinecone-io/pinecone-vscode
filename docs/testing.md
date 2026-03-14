@@ -44,10 +44,28 @@ Bug fixes must include failing-before/passing-after tests for:
 - project-context fallback from organization metadata,
 - host normalization (`host` and `https://host` inputs),
 - standardized explorer refresh sequencing/debounce.
+- advanced query options mapping (`fields` payload),
+- assistant file metadata validation/parsing and pass-through,
+- assistant upload dialog payload parsing (per-file vs list-level metadata),
+- newly added API client endpoint path/method coverage.
+- inference embedding parameter defaults (`input_type`) and override handling.
+- inference rerank token budgeting by model limit, including strict-limit extraction from API errors.
+- panel key scoping for one-dialog-per-resource/context behavior.
 
 ### Error handling consistency
 
 Auth/network/API error tests should validate behavior through `classifyError()` and related shared utilities (`src/utils/errorHandling.ts`).
+
+### New feature minimum coverage
+
+When touching expanded surface areas (Data Ops, Assistant Tools, API Keys, Inference), add or update tests for:
+
+- API method/path/shape assertions in `src/test/suite/api.clients.test.ts`.
+- command registration/enablement in `src/test/suite/commands.test.ts`.
+- context-menu ordering/visibility checks in `src/test/suite/extension.test.ts`.
+- webview payload parsing/mapping logic in `src/test/suite/webview.test.ts`.
+- shared parsing validators in `src/test/suite/inputValidation.test.ts`.
+- dialog key scoping and dedupe behavior in `src/test/suite/panelKeys.test.ts`.
 
 ## Running Locally
 

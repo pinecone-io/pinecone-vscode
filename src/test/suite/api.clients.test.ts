@@ -3,6 +3,8 @@ import { PineconeClient, RequestOptions, ProjectContext } from '../../api/client
 import { ControlPlaneApi } from '../../api/controlPlane';
 import { DataPlaneApi } from '../../api/dataPlane';
 import { NamespaceApi } from '../../api/namespaceApi';
+import { AssistantApi } from '../../api/assistantApi';
+import { InferenceApi } from '../../api/inferenceApi';
 import { IndexModel, NamespaceDescription } from '../../api/types';
 
 interface CapturedRequest {
@@ -147,6 +149,157 @@ suite('API Clients (Production Classes)', () => {
 
             assert.strictEqual(client.calls[0].path, '/records/namespaces/ns%2Falpha/search');
             assert.strictEqual(client.calls[0].options?.host, 'https://idx.svc.us-east-1.pinecone.io');
+        });
+
+        test('upsertVectors targets /vectors/upsert', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({ upsertedCount: 1 });
+
+            const api = new DataPlaneApi(client as unknown as PineconeClient);
+            await api.upsertVectors('idx.svc.us-east-1.pinecone.io', {
+                vectors: [{ id: 'v1', values: [0.1, 0.2, 0.3] }]
+            });
+
+            assert.strictEqual(client.calls[0].method, 'POST');
+            assert.strictEqual(client.calls[0].path, '/vectors/upsert');
+            assert.strictEqual(client.calls[0].options?.host, 'https://idx.svc.us-east-1.pinecone.io');
+        });
+
+        test('upsertRecords uses namespace in path with __default__ fallback', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({ upsertedCount: 1 });
+
+            const api = new DataPlaneApi(client as unknown as PineconeClient);
+            await api.upsertRecords('idx.svc.us-east-1.pinecone.io', '', {
+                records: [{ _id: 'r1', chunk_text: 'hello' }]
+            });
+
+            assert.strictEqual(client.calls[0].path, '/records/namespaces/__default__/upsert');
+        });
+
+        test('fetchVectors encodes ids in query params', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({ vectors: {} });
+
+            const api = new DataPlaneApi(client as unknown as PineconeClient);
+            await api.fetchVectors('idx.svc.us-east-1.pinecone.io', ['a', 'b'], 'docs');
+
+            assert.strictEqual(client.calls[0].method, 'GET');
+            assert.strictEqual(client.calls[0].path, '/vectors/fetch');
+            assert.deepStrictEqual(client.calls[0].options?.queryParams, { ids: ['a', 'b'], namespace: 'docs' });
+        });
+
+        test('listVectorIds sends optional query params', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({ vectors: [] });
+
+            const api = new DataPlaneApi(client as unknown as PineconeClient);
+            await api.listVectorIds('idx.svc.us-east-1.pinecone.io', 'docs', 'pre', 25, 'token-1');
+
+            assert.strictEqual(client.calls[0].path, '/vectors/list');
+            assert.deepStrictEqual(client.calls[0].options?.queryParams, {
+                namespace: 'docs',
+                prefix: 'pre',
+                limit: '25',
+                pagination_token: 'token-1'
+            });
+        });
+
+        test('imports endpoints map correctly', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({ id: 'imp-1' });
+            client.enqueueResponse({ data: [] });
+            client.enqueueResponse({ id: 'imp-1', status: 'running' });
+            client.enqueueResponse({});
+
+            const api = new DataPlaneApi(client as unknown as PineconeClient);
+            await api.startImport('idx.svc.us-east-1.pinecone.io', { uri: 's3://bucket/path' });
+            await api.listImports('idx.svc.us-east-1.pinecone.io', 10, 'next-1');
+            await api.describeImport('idx.svc.us-east-1.pinecone.io', 'imp-1');
+            await api.cancelImport('idx.svc.us-east-1.pinecone.io', 'imp-1');
+
+            assert.strictEqual(client.calls[0].path, '/imports');
+            assert.strictEqual(client.calls[1].path, '/imports');
+            assert.deepStrictEqual(client.calls[1].options?.queryParams, { limit: '10', pagination_token: 'next-1' });
+            assert.strictEqual(client.calls[2].path, '/imports/imp-1');
+            assert.strictEqual(client.calls[3].path, '/imports/imp-1/cancel');
+        });
+    });
+
+    suite('AssistantApi', () => {
+        test('updateAssistant uses PATCH assistant control plane path', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse(sampleIndex('dummy'));
+            const api = new AssistantApi(client as unknown as PineconeClient);
+            await api.updateAssistant('my-assistant', { instructions: 'new instructions' });
+            assert.strictEqual(client.calls[0].method, 'PATCH');
+            assert.strictEqual(client.calls[0].path, '/assistant/assistants/my-assistant');
+        });
+
+        test('listFiles supports metadata filter query param', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({ files: [] });
+            const api = new AssistantApi(client as unknown as PineconeClient);
+
+            await api.listFiles('asst.svc.us-east-1.pinecone.io', 'my-assistant', undefined, { category: 'docs' });
+
+            assert.strictEqual(client.calls[0].path, '/assistant/files/my-assistant');
+            assert.deepStrictEqual(client.calls[0].options?.queryParams, {
+                metadata: JSON.stringify({ category: 'docs' })
+            });
+        });
+
+        test('assistant context/evaluate and describeFile paths', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({});
+            client.enqueueResponse({});
+            client.enqueueResponse({});
+            const api = new AssistantApi(client as unknown as PineconeClient);
+
+            await api.describeFile('asst.svc.us-east-1.pinecone.io', 'my-assistant', 'file-1', undefined, true);
+            await api.retrieveContext('asst.svc.us-east-1.pinecone.io', 'my-assistant', { query: 'hello' });
+            await api.evaluateAnswer(
+                'asst.svc.us-east-1.pinecone.io',
+                'my-assistant',
+                { question: 'q', answer: 'a', ground_truth_answer: 'gt' }
+            );
+
+            assert.strictEqual(client.calls[0].path, '/assistant/files/my-assistant/file-1');
+            assert.deepStrictEqual(client.calls[0].options?.queryParams, { include_url: 'true' });
+            assert.strictEqual(client.calls[1].path, '/assistant/chat/my-assistant/context');
+            assert.strictEqual(client.calls[2].path, '/assistant/evaluation/metrics/alignment');
+            assert.deepStrictEqual(client.calls[2].options?.body, {
+                question: 'q',
+                answer: 'a',
+                ground_truth_answer: 'gt'
+            });
+        });
+    });
+
+    suite('InferenceApi', () => {
+        test('embed/rerank/model endpoints map correctly', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({ data: [] });
+            client.enqueueResponse({ data: [] });
+            client.enqueueResponse({ data: [{ name: 'm1' }] });
+            client.enqueueResponse({ name: 'm1' });
+            const api = new InferenceApi(client as unknown as PineconeClient);
+            const projectContext = { id: 'proj-1', name: 'Project 1', organizationId: 'org-1' };
+
+            await api.embed({ model: 'm1', inputs: [{ text: 'a' }] }, projectContext);
+            await api.rerank({ model: 'm2', query: 'q', documents: [{ text: 'd1' }] }, projectContext);
+            await api.listModels('embed', projectContext);
+            await api.describeModel('m1', projectContext);
+
+            assert.strictEqual(client.calls[0].path, '/embed');
+            assert.strictEqual(client.calls[1].path, '/rerank');
+            assert.strictEqual(client.calls[2].path, '/models');
+            assert.deepStrictEqual(client.calls[2].options?.queryParams, { type: 'embed' });
+            assert.strictEqual(client.calls[3].path, '/models/m1');
+            assert.deepStrictEqual(client.calls[0].options?.projectContext, projectContext);
+            assert.deepStrictEqual(client.calls[1].options?.projectContext, projectContext);
+            assert.deepStrictEqual(client.calls[2].options?.projectContext, projectContext);
+            assert.deepStrictEqual(client.calls[3].options?.projectContext, projectContext);
         });
     });
 
