@@ -2,13 +2,24 @@ name: CI
 
 on:
   pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test-and-lint:
+  verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      PINECONE_INTEGRATION_TESTS: 'true'
 
     steps:
       - name: Checkout
@@ -23,11 +34,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
-        run: npm run check-types
+      - name: Ensure integration secret is configured
+        run: |
+          if [ -z "${PINECONE_API_KEY}" ]; then
+            echo "::error::Missing required repository secret: PINECONE_API_KEY"
+            exit 1
+          fi
 
-      - name: Lint
-        run: npm run lint
+      - name: Clean artifacts
+        run: npm run clean:artifacts
+
+      - name: Build
+        run: npm run compile
 
       - name: Unit test suite
         run: xvfb-run -a npm test
@@ -35,25 +53,14 @@ jobs:
       - name: Coverage suite
         run: xvfb-run -a npm run test:coverage
 
-  integration-smoke:
-    if: ${{ secrets.PINECONE_API_KEY != '' }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
       - name: Integration smoke tests
-        env:
-          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
-          PINECONE_INTEGRATION_TESTS: 'true'
         run: xvfb-run -a npm run test:integration
+
+      - name: Build VSIX
+        run: npx @vscode/vsce package
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinecone-vscode-vsix
+          path: '*.vsix'
