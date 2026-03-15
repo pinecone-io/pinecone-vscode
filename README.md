@@ -61,6 +61,10 @@ Build, test, and operate Pinecone indexes and assistants directly inside VS Code
 
 ![Data Ops panel overview](https://raw.githubusercontent.com/pinecone-io/pinecone-vscode/main/docs/images/extension-ui/data-ops-panel-overview.png)
 
+### Inference Toolbox
+
+![Inference Toolbox overview](https://raw.githubusercontent.com/pinecone-io/pinecone-vscode/main/docs/images/extension-ui/inference-toolbox-overview.png)
+
 ### Assistant chat with citations
 
 ![Assistant chat response with citations](https://raw.githubusercontent.com/pinecone-io/pinecone-vscode/main/docs/images/extension-ui/assistant-chat-response-with-citations.png)
