@@ -196,6 +196,17 @@
             </div>
             <button data-action="startImport">Start Import</button>
             <div id="result-startImport" class="section-result hidden"></div>
+            <section class="imports-active-section">
+                <h4>Active Import Jobs</h4>
+                <p class="hint">Review active imports for this index and cancel a selected job.</p>
+                <div id="active-imports-list" class="jobs-list"></div>
+                <div class="inline-actions">
+                    <button data-action="refreshActiveImports" type="button" class="secondary-action">Refresh Active Imports</button>
+                    <button data-action="cancelImport" type="button" id="cancel-import-btn">Cancel Selected Import</button>
+                </div>
+                <div id="active-imports-empty" class="jobs-summary empty-result">No active import jobs.</div>
+                <div id="result-cancelImport" class="section-result hidden"></div>
+            </section>
         </section>
 
         <div id="error" class="error hidden"></div>

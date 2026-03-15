@@ -54,6 +54,8 @@ class MockPineconeService {
     public namespaces: ListNamespacesResponse = { namespaces: [], total_count: 0 };
     public backups: BackupModel[] = [];
     public files: FileModel[] = [];
+    public describedIndexes = new Map<string, IndexModel>();
+    public describeFailures = new Set<string>();
 
     public targetOrganization: { id: string; name: string } | undefined;
     public targetProject: { id: string; name: string } | undefined;
@@ -92,9 +94,26 @@ class MockPineconeService {
         };
     }
 
-    getControlPlane(): { listBackups: () => Promise<BackupModel[]> } {
+    getControlPlane(): {
+        listBackups: () => Promise<BackupModel[]>;
+        describeIndex: (name: string) => Promise<IndexModel>;
+    } {
         return {
-            listBackups: async () => this.backups
+            listBackups: async () => this.backups,
+            describeIndex: async (name: string) => {
+                if (this.describeFailures.has(name)) {
+                    throw new Error('describe failed');
+                }
+                const described = this.describedIndexes.get(name);
+                if (described) {
+                    return described;
+                }
+                const found = this.indexes.find((index) => index.name === name);
+                if (!found) {
+                    throw new Error('not found');
+                }
+                return found;
+            }
         };
     }
 
@@ -130,6 +149,115 @@ function makeIndex(): IndexModel {
         host: 'idx-1.svc.us-east-1.pinecone.io',
         status: { ready: true, state: 'Ready' },
         spec: { serverless: { cloud: 'aws', region: 'us-east-1' } },
+        deletion_protection: 'disabled'
+    };
+}
+
+function makeDedicatedReadIndex(): IndexModel {
+    return {
+        name: 'idx-dedicated',
+        metric: 'cosine',
+        dimension: 1536,
+        host: 'idx-dedicated.svc.us-east-1.pinecone.io',
+        status: {
+            ready: true,
+            state: 'Ready',
+            read_capacity: {
+                mode: 'Dedicated',
+                status: 'Ready',
+                current_replicas: 2,
+                current_shards: 3
+            }
+        },
+        spec: {
+            serverless: {
+                cloud: 'aws',
+                region: 'us-east-1',
+                read_capacity: {
+                    mode: 'Dedicated',
+                    dedicated: {
+                        node_type: 'b1',
+                        scaling: 'Manual',
+                        manual: {
+                            replicas: 2,
+                            shards: 3
+                        }
+                    }
+                }
+            }
+        },
+        deletion_protection: 'disabled'
+    };
+}
+
+function makeDedicatedScalingIndex(): IndexModel {
+    return {
+        name: 'idx-dedicated-scaling',
+        metric: 'cosine',
+        dimension: 1536,
+        host: 'idx-dedicated-scaling.svc.us-east-1.pinecone.io',
+        status: {
+            ready: true,
+            state: 'Ready',
+            read_capacity: {
+                mode: 'Dedicated',
+                status: 'Scaling',
+                current_replicas: 1,
+                current_shards: 1
+            }
+        },
+        spec: {
+            serverless: {
+                cloud: 'aws',
+                region: 'us-east-1',
+                read_capacity: {
+                    mode: 'Dedicated',
+                    dedicated: {
+                        node_type: 'b1',
+                        scaling: 'Manual',
+                        manual: {
+                            replicas: 2,
+                            shards: 1
+                        }
+                    }
+                }
+            }
+        },
+        deletion_protection: 'disabled'
+    };
+}
+
+function makeDedicatedMigratingIndexFromDescribe(name: string): IndexModel {
+    return {
+        name,
+        metric: 'cosine',
+        dimension: 1536,
+        host: `${name}.svc.us-east-1.pinecone.io`,
+        status: {
+            ready: true,
+            state: 'Ready',
+            read_capacity: {
+                mode: 'Dedicated (Migrating)' as unknown as 'Dedicated',
+                status: 'Ready'
+            }
+        },
+        spec: {
+            serverless: {
+                cloud: 'aws',
+                region: 'us-east-1',
+                read_capacity: {
+                    mode: 'Dedicated',
+                    dedicated: {
+                        node_type: 'b1',
+                        scaling: 'Manual',
+                        manual: {
+                            replicas: 1,
+                            shards: 1
+                        }
+                    }
+                }
+            }
+        },
         deletion_protection: 'disabled'
     };
 }
@@ -250,6 +378,124 @@ suite('PineconeTreeDataProvider (Production Class)', () => {
         });
         assert.ok(indexes[0].metadata?.project);
         assert.ok(indexes[0].metadata?.organization);
+    });
+
+    test('renders dedicated read node indexes with DRN label and tooltip details', async () => {
+        pineconeService.indexes = [makeDedicatedReadIndex()];
+
+        const project = makeProject();
+        const organization = makeOrganization();
+        const databaseCategory = new PineconeTreeItem(
+            'Database',
+            PineconeItemType.DatabaseCategory,
+            vscode.TreeItemCollapsibleState.Collapsed,
+            project.id,
+            project.id,
+            { project, organization }
+        );
+
+        const indexes = await provider.getChildren(databaseCategory);
+
+        assert.strictEqual(indexes.length, 1);
+        assert.strictEqual(indexes[0].label, 'idx-dedicated (DRN)');
+        assert.ok(String(indexes[0].tooltip).includes('Read Capacity: Dedicated'));
+    });
+
+    test('renders DRN scaling indexes as unavailable until scaling completes', async () => {
+        pineconeService.indexes = [makeDedicatedScalingIndex()];
+
+        const project = makeProject();
+        const organization = makeOrganization();
+        const databaseCategory = new PineconeTreeItem(
+            'Database',
+            PineconeItemType.DatabaseCategory,
+            vscode.TreeItemCollapsibleState.Collapsed,
+            project.id,
+            project.id,
+            { project, organization }
+        );
+
+        const indexes = await provider.getChildren(databaseCategory);
+
+        assert.strictEqual(indexes.length, 1);
+        assert.strictEqual(indexes[0].itemType, PineconeItemType.InitializingIndex);
+        assert.strictEqual(indexes[0].label, 'idx-dedicated-scaling (DRN Scaling)');
+        assert.ok(String(indexes[0].tooltip).includes('Actions are disabled'));
+    });
+
+    test('uses describe runtime to keep Dedicated (Migrating) index unavailable even when list shows Ready', async () => {
+        const listed = makeIndex();
+        listed.name = 'idx-dedicated-migrating';
+        listed.host = 'idx-dedicated-migrating.svc.us-east-1.pinecone.io';
+        listed.status = { ready: true, state: 'Ready' };
+        listed.spec = {
+            serverless: {
+                cloud: 'aws',
+                region: 'us-east-1',
+                read_capacity: {
+                    mode: 'Dedicated',
+                    dedicated: {
+                        node_type: 'b1',
+                        scaling: 'Manual',
+                        manual: {
+                            replicas: 1,
+                            shards: 1
+                        }
+                    }
+                }
+            }
+        };
+
+        pineconeService.indexes = [listed];
+        pineconeService.describedIndexes.set(
+            'idx-dedicated-migrating',
+            makeDedicatedMigratingIndexFromDescribe('idx-dedicated-migrating')
+        );
+
+        const project = makeProject();
+        const organization = makeOrganization();
+        const databaseCategory = new PineconeTreeItem(
+            'Database',
+            PineconeItemType.DatabaseCategory,
+            vscode.TreeItemCollapsibleState.Collapsed,
+            project.id,
+            project.id,
+            { project, organization }
+        );
+
+        const indexes = await provider.getChildren(databaseCategory);
+
+        assert.strictEqual(indexes.length, 1);
+        assert.strictEqual(indexes[0].itemType, PineconeItemType.InitializingIndex);
+        assert.strictEqual(indexes[0].label, 'idx-dedicated-migrating (DRN Migrating)');
+        assert.ok(String(indexes[0].tooltip).includes('Actions are disabled'));
+    });
+
+    test('keeps dedicated indexes unavailable when describe fails and runtime status cannot be verified', async () => {
+        const listed = makeDedicatedReadIndex();
+        listed.name = 'idx-dedicated-describe-failure';
+        listed.host = 'idx-dedicated-describe-failure.svc.us-east-1.pinecone.io';
+        listed.status = { ready: true, state: 'Ready' };
+        pineconeService.indexes = [listed];
+        pineconeService.describeFailures.add('idx-dedicated-describe-failure');
+
+        const project = makeProject();
+        const organization = makeOrganization();
+        const databaseCategory = new PineconeTreeItem(
+            'Database',
+            PineconeItemType.DatabaseCategory,
+            vscode.TreeItemCollapsibleState.Collapsed,
+            project.id,
+            project.id,
+            { project, organization }
+        );
+
+        const indexes = await provider.getChildren(databaseCategory);
+
+        assert.strictEqual(indexes.length, 1);
+        assert.strictEqual(indexes[0].itemType, PineconeItemType.InitializingIndex);
+        assert.strictEqual(indexes[0].label, 'idx-dedicated-describe-failure (DRN Updating)');
+        assert.ok(String(indexes[0].tooltip).includes('Unable to verify DRN runtime status'));
     });
 
     test('stale namespace metadata schedules only one recovery refresh', async () => {

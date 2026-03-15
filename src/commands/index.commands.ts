@@ -26,11 +26,49 @@ import * as vscode from 'vscode';
 import { PineconeService } from '../services/pineconeService';
 import { PineconeTreeItem, PineconeItemType } from '../providers/treeItems';
 import { PineconeTreeDataProvider } from '../providers/pineconeTreeDataProvider';
-import { IndexModel, ServerlessSpec, PodSpec, RestoreJob, CreateIndexForModelRequest, BackupModel } from '../api/types';
+import { IndexModel, IndexStats, ServerlessSpec, PodSpec, CreateIndexForModelRequest, BackupModel } from '../api/types';
 import { CLOUD_REGIONS, EMBEDDING_MODELS, POLLING_CONFIG } from '../utils/constants';
 import { getErrorMessage } from '../utils/errorHandling';
 import { buildProjectContextFromItem, setProjectContextFromItem } from '../utils/treeItemHelpers';
 import { refreshExplorer } from '../utils/refreshExplorer';
+import { summarizeReadCapacity } from '../utils/readCapacity';
+import { waitForIndexReadyForOperations } from '../utils/indexReadiness';
+
+export function formatIndexStatsMessage(name: string, stats: IndexStats, indexDetails: IndexModel): string {
+    const readCapacity = summarizeReadCapacity(indexDetails);
+
+    const namespaceInfo = Object.entries(stats.namespaces || {})
+        .map(([ns, data]) => `  ${ns || '(default)'}: ${data.vectorCount.toLocaleString()} vectors`)
+        .join('\n');
+
+    const readCapacityInfo = [
+        `Read Capacity Mode: ${readCapacity.mode}`,
+        readCapacity.mode === 'Dedicated' && readCapacity.nodeType
+            ? `Read Node Type: ${readCapacity.nodeType}`
+            : undefined,
+        readCapacity.mode === 'Dedicated' && readCapacity.desiredReplicas && readCapacity.desiredShards
+            ? `Desired Read Capacity: ${readCapacity.desiredReplicas} replicas, ${readCapacity.desiredShards} shards`
+            : undefined,
+        readCapacity.currentReplicas && readCapacity.currentShards
+            ? `Current Read Capacity: ${readCapacity.currentReplicas} replicas, ${readCapacity.currentShards} shards`
+            : undefined,
+        readCapacity.status
+            ? `Read Capacity Status: ${readCapacity.status}`
+            : undefined
+    ].filter((line): line is string => !!line);
+
+    return [
+        `Index: ${name}`,
+        `Total Vectors: ${stats.totalVectorCount.toLocaleString()}`,
+        `Dimension: ${stats.dimension}`,
+        `Index Fullness: ${(stats.indexFullness * 100).toFixed(1)}%`,
+        '',
+        ...readCapacityInfo,
+        '',
+        'Namespaces:',
+        namespaceInfo || '  (no namespaces)'
+    ].join('\n');
+}
 
 /**
  * Handles all index-related commands in the extension.
@@ -433,6 +471,7 @@ export class IndexCommands {
         if (!item.resourceId) { return; }
         const name = item.resourceId;
         const index = item.metadata?.index as IndexModel | undefined;
+        const projectContext = buildProjectContextFromItem(item);
 
         // Set project context from tree item for JWT authentication
         // Uses full project context when available for managed API key authentication
@@ -486,11 +525,39 @@ export class IndexCommands {
                 location: vscode.ProgressLocation.Notification,
                 title: `Deleting index "${name}"...`,
                 cancellable: false
-            }, async () => {
+            }, async (progress) => {
                 await this.pineconeService.deleteIndex(name);
+
+                const startTime = Date.now();
+                const maxWaitMs = Math.min(POLLING_CONFIG.MAX_WAIT_MS, 10 * 60 * 1000);
+                progress.report({ message: 'Delete requested. Waiting for index removal...' });
+                while (Date.now() - startTime < maxWaitMs) {
+                    await refreshExplorer({
+                        treeDataProvider: this.treeDataProvider,
+                        delayMs: 0,
+                        focusExplorer: false
+                    });
+                    await this.sleep(POLLING_CONFIG.POLL_INTERVAL_MS);
+
+                    try {
+                        const current = await this.pineconeService.getControlPlane().describeIndex(name, projectContext);
+                        const state = String(current.status?.state || '').trim();
+                        const elapsed = Math.round((Date.now() - startTime) / 1000);
+                        progress.report({
+                            message: `Index state: ${state || 'Unknown'} (${elapsed}s)`
+                        });
+                    } catch (pollError: unknown) {
+                        const pollMessage = getErrorMessage(pollError).toLowerCase();
+                        if (pollMessage.includes('not found') || pollMessage.includes('404')) {
+                            return;
+                        }
+                    }
+                }
             });
-            
-            vscode.window.showInformationMessage(`Index "${name}" deleted successfully`);
+
+            vscode.window.showInformationMessage(
+                `Delete requested for "${name}". If it still appears briefly, refresh again in a moment.`
+            );
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to delete index: ${message}`);
@@ -518,6 +585,17 @@ export class IndexCommands {
         if (!item.resourceId) { return; }
         setProjectContextFromItem(item, this.pineconeService);
         const projectContext = buildProjectContextFromItem(item);
+        try {
+            await waitForIndexReadyForOperations(
+                this.pineconeService,
+                item.resourceId,
+                'Configure Index',
+                projectContext
+            );
+        } catch (error: unknown) {
+            vscode.window.showErrorMessage(getErrorMessage(error));
+            return;
+        }
         const { ConfigureIndexPanel } = await import('../webview/configureIndexPanel.js');
         ConfigureIndexPanel.createOrShow(
             this.extensionUri || vscode.Uri.file(''),
@@ -776,35 +854,34 @@ export class IndexCommands {
         if (!item.resourceId || !item.metadata?.index?.host) { return; }
         
         const name = item.resourceId;
-        const host = item.metadata.index.host;
+        let host = item.metadata.index.host;
+        const projectContext = buildProjectContextFromItem(item);
 
         // Set project context from tree item for JWT authentication
         // Uses full project context when available for managed API key authentication
         setProjectContextFromItem(item, this.pineconeService);
 
         try {
-            const stats = await vscode.window.withProgress({
+            const readyIndex = await waitForIndexReadyForOperations(
+                this.pineconeService,
+                name,
+                'View Index Stats',
+                projectContext
+            );
+            host = readyIndex.host || host;
+
+            const { stats, indexDetails } = await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: `Loading stats for "${name}"...`,
                 cancellable: false
             }, async () => {
-                return this.pineconeService.describeIndexStats(host);
+                const [statsResult, indexResult] = await Promise.all([
+                    this.pineconeService.describeIndexStats(host),
+                    this.pineconeService.getControlPlane().describeIndex(name, projectContext)
+                ]);
+                return { stats: statsResult, indexDetails: indexResult };
             });
-
-            // Format namespace info
-            const namespaceInfo = Object.entries(stats.namespaces || {})
-                .map(([ns, data]) => `  ${ns || '(default)'}: ${data.vectorCount.toLocaleString()} vectors`)
-                .join('\n');
-
-            const message = [
-                `Index: ${name}`,
-                `Total Vectors: ${stats.totalVectorCount.toLocaleString()}`,
-                `Dimension: ${stats.dimension}`,
-                `Index Fullness: ${(stats.indexFullness * 100).toFixed(1)}%`,
-                '',
-                'Namespaces:',
-                namespaceInfo || '  (no namespaces)'
-            ].join('\n');
+            const message = formatIndexStatsMessage(name, stats, indexDetails);
 
             // Show in output channel for better formatting
             const outputChannel = vscode.window.createOutputChannel('Pinecone Index Stats');
@@ -980,7 +1057,7 @@ export class IndexCommands {
                     name: newIndexName,
                     deletion_protection: enableProtection.value,
                     tags: Object.keys(tags).length > 0 ? tags : undefined
-                });
+                }, projectContext);
                 
                 // Poll for index to become ready
                 progress.report({ message: 'Waiting for index to be ready...' });
@@ -1162,85 +1239,31 @@ export class IndexCommands {
         }
     }
 
-    /**
-     * Displays a list of all restore jobs with their status.
-     * 
-     * Shows restore jobs across all indexes with options to refresh
-     * and view details.
-     */
-    async viewRestoreJobs(): Promise<void> {
+    async viewRestoreJobs(item?: PineconeTreeItem): Promise<void> {
+        if (!item || item.itemType !== PineconeItemType.BackupsCategory || !item.resourceId) {
+            vscode.window.showErrorMessage(
+                'Backup/Restore Jobs is index-scoped. Open it from the Backups node under an index.'
+            );
+            return;
+        }
+
+        const indexName = item.resourceId;
+        const projectContext = buildProjectContextFromItem(item);
+        setProjectContextFromItem(item, this.pineconeService);
+
         try {
-            const response = await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Loading restore jobs...',
-                cancellable: false
-            }, async () => {
-                return this.pineconeService.getControlPlane().listRestoreJobs({ limit: 50 });
-            });
-
-            const jobs = response.data || [];
-
-            if (jobs.length === 0) {
-                vscode.window.showInformationMessage('No restore jobs found');
-                return;
-            }
-
-            // Format job items with status icons
-            const jobItems = jobs.map(job => {
-                const statusIcon = job.status === 'Completed' ? '$(check)' :
-                                   job.status === 'Failed' ? '$(error)' :
-                                   '$(sync~spin)';
-                const progress = job.status === 'InProgress' ? ` (${job.percent_complete}%)` : '';
-                
-                return {
-                    label: `${statusIcon} ${job.target_index_name}`,
-                    description: `${job.status}${progress}`,
-                    detail: `From backup: ${job.backup_id} | Started: ${new Date(job.created_at).toLocaleString()}`,
-                    job
-                };
-            });
-
-            const selected = await vscode.window.showQuickPick(jobItems, {
-                placeHolder: `Restore Jobs (${jobs.length} total)`,
-                matchOnDescription: true,
-                matchOnDetail: true
-            });
-
-            if (selected) {
-                // Show detailed job info
-                this.showRestoreJobDetails(selected.job);
-            }
-
+            const { BackupRestoreJobsPanel } = await import('../webview/backupRestoreJobsPanel.js');
+            BackupRestoreJobsPanel.createOrShow(
+                this.extensionUri || vscode.Uri.file(''),
+                this.pineconeService,
+                indexName,
+                projectContext,
+                this.treeDataProvider
+            );
         } catch (e: unknown) {
             const message = getErrorMessage(e);
-            vscode.window.showErrorMessage(`Failed to list restore jobs: ${message}`);
+            vscode.window.showErrorMessage(`Failed to open Backup/Restore Jobs: ${message}`);
         }
-    }
-
-    /**
-     * Shows detailed information about a restore job.
-     */
-    private showRestoreJobDetails(job: RestoreJob): void {
-        const outputChannel = vscode.window.createOutputChannel('Pinecone Restore Job');
-        outputChannel.clear();
-        
-        const completedAt = job.completed_at 
-            ? new Date(job.completed_at).toLocaleString() 
-            : 'In progress...';
-
-        outputChannel.appendLine(`Restore Job: ${job.restore_job_id}`);
-        outputChannel.appendLine('');
-        outputChannel.appendLine(`Target Index: ${job.target_index_name}`);
-        outputChannel.appendLine(`Target Index ID: ${job.target_index_id}`);
-        outputChannel.appendLine(`Source Backup: ${job.backup_id}`);
-        outputChannel.appendLine('');
-        outputChannel.appendLine(`Status: ${job.status}`);
-        outputChannel.appendLine(`Progress: ${job.percent_complete}%`);
-        outputChannel.appendLine('');
-        outputChannel.appendLine(`Started: ${new Date(job.created_at).toLocaleString()}`);
-        outputChannel.appendLine(`Completed: ${completedAt}`);
-        
-        outputChannel.show();
     }
 
     /**

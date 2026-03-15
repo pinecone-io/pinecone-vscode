@@ -203,6 +203,65 @@ suite('Index Commands Behavioral Tests', () => {
             // Sparse indexes don't require dimension
             assert.strictEqual(mockService.lastCreateIndexCall.dimension, undefined);
         });
+
+        test('should build BYOV on-demand read capacity request', () => {
+            const mockService = new MockPineconeService();
+
+            const userInput = {
+                name: 'my-ondemand-index',
+                dimension: 1536,
+                metric: 'cosine' as const,
+                spec: {
+                    serverless: {
+                        cloud: 'aws' as const,
+                        region: 'us-east-1',
+                        read_capacity: {
+                            mode: 'OnDemand' as const
+                        }
+                    }
+                } as ServerlessSpec
+            };
+
+            mockService.createIndex(userInput);
+
+            const spec = mockService.lastCreateIndexCall?.spec as ServerlessSpec;
+            assert.strictEqual(spec.serverless.read_capacity?.mode, 'OnDemand');
+        });
+
+        test('should build BYOV dedicated read capacity request', () => {
+            const mockService = new MockPineconeService();
+
+            const userInput = {
+                name: 'my-drn-index',
+                dimension: 1536,
+                metric: 'cosine' as const,
+                spec: {
+                    serverless: {
+                        cloud: 'aws' as const,
+                        region: 'us-east-1',
+                        read_capacity: {
+                            mode: 'Dedicated' as const,
+                            dedicated: {
+                                node_type: 'b1' as const,
+                                scaling: 'Manual' as const,
+                                manual: {
+                                    replicas: 2,
+                                    shards: 3
+                                }
+                            }
+                        }
+                    }
+                } as ServerlessSpec
+            };
+
+            mockService.createIndex(userInput);
+
+            const spec = mockService.lastCreateIndexCall?.spec as ServerlessSpec;
+            assert.strictEqual(spec.serverless.read_capacity?.mode, 'Dedicated');
+            assert.strictEqual(spec.serverless.read_capacity?.dedicated?.node_type, 'b1');
+            assert.strictEqual(spec.serverless.read_capacity?.dedicated?.manual.replicas, 2);
+            assert.strictEqual(spec.serverless.read_capacity?.dedicated?.manual.shards, 3);
+        });
     });
 
     suite('deleteIndex Command Logic', () => {
@@ -265,6 +324,46 @@ suite('Index Commands Behavioral Tests', () => {
             assert.ok(mockService.lastConfigureIndexCall);
             const spec = mockService.lastConfigureIndexCall.config.spec as { pod: { replicas: number } };
             assert.strictEqual(spec.pod.replicas, 3);
+        });
+
+        test('should configure dedicated read capacity', async () => {
+            const mockService = new MockPineconeService();
+
+            await mockService.configureIndex('my-index', {
+                spec: {
+                    serverless: {
+                        read_capacity: {
+                            mode: 'Dedicated',
+                            dedicated: {
+                                node_type: 't1',
+                                scaling: 'Manual',
+                                manual: {
+                                    replicas: 3,
+                                    shards: 2
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            assert.ok(mockService.lastConfigureIndexCall);
+            const spec = mockService.lastConfigureIndexCall.config.spec as {
+                serverless: {
+                    read_capacity: {
+                        mode: 'Dedicated';
+                        dedicated: {
+                            node_type: string;
+                            scaling: 'Manual';
+                            manual: { replicas: number; shards: number };
+                        };
+                    };
+                };
+            };
+            assert.strictEqual(spec.serverless.read_capacity.mode, 'Dedicated');
+            assert.strictEqual(spec.serverless.read_capacity.dedicated.node_type, 't1');
+            assert.strictEqual(spec.serverless.read_capacity.dedicated.manual.replicas, 3);
+            assert.strictEqual(spec.serverless.read_capacity.dedicated.manual.shards, 2);
         });
     });
 });

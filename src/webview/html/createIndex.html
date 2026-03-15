@@ -40,7 +40,7 @@
 
             <div class="form-group" id="standard-dimension-group">
                 <label for="standard-dimension">Dimension</label>
-                <input id="standard-dimension" type="number" min="1" max="20000" placeholder="1536">
+                <input id="standard-dimension" type="number" min="1" max="20000" value="1024" placeholder="1024">
             </div>
 
             <div class="form-group" id="standard-metric-group">
@@ -62,10 +62,40 @@
                     <select id="standard-region"></select>
                 </div>
             </div>
+
+            <div class="form-group">
+                <label for="standard-read-capacity-mode">Read Capacity Mode</label>
+                <select id="standard-read-capacity-mode">
+                    <option value="OnDemand">OnDemand</option>
+                    <option value="Dedicated">Dedicated Read Nodes</option>
+                </select>
+                <p class="hint">Dedicated Read Nodes are only supported for Bring Your Own Vectors indexes in this extension.</p>
+            </div>
+
+            <div id="standard-dedicated-read-capacity" class="hidden">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="standard-read-capacity-node-type">Node Type</label>
+                        <select id="standard-read-capacity-node-type">
+                            <option value="b1">b1</option>
+                            <option value="t1">t1</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="standard-read-capacity-replicas">Replicas</label>
+                        <input id="standard-read-capacity-replicas" type="number" min="1" step="1" value="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="standard-read-capacity-shards">Shards</label>
+                        <input id="standard-read-capacity-shards" type="number" min="1" step="1" value="1">
+                    </div>
+                </div>
+            </div>
         </section>
 
         <section class="card hidden" id="integrated-section">
             <h3>Integrated Embeddings Index</h3>
+            <p class="hint">Dedicated Read Nodes are disabled for integrated embedding indexes in this extension.</p>
             <div class="form-group">
                 <label for="integrated-model">Embedding Model</label>
                 <select id="integrated-model"></select>

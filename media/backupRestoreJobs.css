@@ -11,11 +11,21 @@ body {
 }
 
 .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
     margin-bottom: 12px;
 }
 
 .header h2 {
     margin: 0;
+}
+
+.hint {
+    margin: 6px 0 0;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
 }
 
 .card {
@@ -30,19 +40,75 @@ body {
     margin-top: 0;
 }
 
-.form-group {
+.jobs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.job-select-row,
+.job-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    align-items: start;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.job-row {
+    grid-template-columns: 1fr;
+}
+
+.job-content {
+    min-width: 0;
+}
+
+.job-title {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.job-meta {
+    margin-top: 4px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+}
+
+.job-detail {
+    margin-top: 6px;
+    font-size: 0.85em;
+    color: var(--vscode-descriptionForeground);
+    word-break: break-word;
+}
+
+.actions-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.create-backup-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
     margin-bottom: 10px;
 }
 
-label {
+.form-group {
+    flex: 1;
+}
+
+.form-group label {
     display: block;
     margin-bottom: 5px;
     font-weight: 600;
 }
 
-input[type="text"],
-input[type="number"],
-select {
+.form-group input {
     width: 100%;
     padding: 8px;
     background-color: var(--vscode-input-background);
@@ -52,39 +118,11 @@ select {
     box-sizing: border-box;
 }
 
-.hint {
-    color: var(--vscode-descriptionForeground);
-    font-size: 0.9em;
-    margin: 0 0 8px;
-}
-
-.form-row {
-    display: flex;
-    gap: 12px;
-}
-
-.form-row .form-group {
-    flex: 1;
-}
-
-.tag-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr auto;
-    gap: 8px;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.tag-row button {
-    width: auto;
-    padding: 8px 10px;
-}
-
 button {
     background-color: var(--vscode-button-background);
     color: var(--vscode-button-foreground);
     border: none;
-    padding: 8px 16px;
+    padding: 8px 14px;
     border-radius: 2px;
     cursor: pointer;
 }
@@ -102,9 +140,9 @@ button.secondary:hover {
     background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
-.actions {
-    display: flex;
-    justify-content: flex-end;
+button:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 
 .error {
@@ -125,16 +163,26 @@ button.secondary:hover {
     margin-bottom: 12px;
 }
 
+.empty-result {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
 .hidden {
     display: none;
 }
 
 @media (max-width: 768px) {
-    .form-row {
+    .header {
         flex-direction: column;
     }
 
-    .tag-row {
-        grid-template-columns: 1fr;
+    .create-backup-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .actions-row button {
+        width: 100%;
     }
 }

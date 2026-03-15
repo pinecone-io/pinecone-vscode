@@ -3,11 +3,12 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { PineconeService } from '../services/pineconeService';
 import { PineconeTreeDataProvider } from '../providers/pineconeTreeDataProvider';
-import { CreateIndexForModelRequest, IndexModel } from '../api/types';
+import { CreateIndexForModelRequest, IndexModel, ServerlessSpec } from '../api/types';
 import { CLOUD_REGIONS, EMBEDDING_MODELS, POLLING_CONFIG } from '../utils/constants';
 import { refreshExplorer } from '../utils/refreshExplorer';
 import { getErrorMessage } from '../utils/errorHandling';
 import { ProjectContext } from '../api/client';
+import { parseReadCapacityPayload } from '../utils/readCapacity';
 
 interface CreateIndexMessage {
     command: 'ready' | 'submit';
@@ -157,6 +158,14 @@ export class CreateIndexPanel {
             const mode = String(payload.mode || 'standard');
             if (mode === 'integrated') {
                 const integrated = (payload.integrated || {}) as Record<string, unknown>;
+                if (integrated.readCapacity !== undefined) {
+                    const readCapacityValidation = parseReadCapacityPayload(integrated.readCapacity, {
+                        allowDedicated: false
+                    });
+                    if (readCapacityValidation.error) {
+                        throw new Error(readCapacityValidation.error);
+                    }
+                }
                 await this.createIntegrated(name, integrated);
             } else {
                 const standard = (payload.standard || {}) as Record<string, unknown>;
@@ -180,13 +189,18 @@ export class CreateIndexPanel {
         if (!cloud || !region) {
             throw new Error('Cloud and region are required.');
         }
+        const readCapacity = parseReadCapacityPayload(payload.readCapacity, { allowDedicated: true });
+        if (readCapacity.error || !readCapacity.value) {
+            throw new Error(readCapacity.error || 'Read capacity is invalid.');
+        }
 
         const indexConfig: Partial<IndexModel> = {
             name,
             spec: {
                 serverless: {
                     cloud: cloud as 'aws' | 'gcp' | 'azure',
-                    region
+                    region,
+                    read_capacity: readCapacity.value
                 }
             }
         };
@@ -205,6 +219,11 @@ export class CreateIndexPanel {
             }
             indexConfig.dimension = dimension;
             indexConfig.metric = metric as 'cosine' | 'dotproduct' | 'euclidean';
+        }
+
+        const spec = indexConfig.spec as ServerlessSpec | undefined;
+        if (!spec?.serverless?.read_capacity) {
+            throw new Error('Read capacity configuration is required.');
         }
 
         await vscode.window.withProgress({

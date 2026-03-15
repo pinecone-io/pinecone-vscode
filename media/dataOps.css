@@ -140,6 +140,76 @@ button:hover {
     background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
+.imports-active-section {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--vscode-editorGroup-border);
+}
+
+.imports-active-section h4 {
+    margin: 0;
+}
+
+.inline-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.inline-actions button {
+    width: auto;
+}
+
+.jobs-summary {
+    font-size: 0.9em;
+    color: var(--vscode-descriptionForeground);
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 4px;
+    padding: 8px;
+    background-color: var(--vscode-editor-background);
+    word-break: break-word;
+}
+
+.jobs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.job-select-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    align-items: start;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.job-content {
+    min-width: 0;
+}
+
+.job-title {
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.job-meta {
+    margin-top: 4px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+}
+
+.job-detail {
+    margin-top: 6px;
+    font-size: 0.85em;
+    color: var(--vscode-descriptionForeground);
+    word-break: break-word;
+}
+
 .match-item {
     background-color: var(--vscode-editor-inactiveSelectionBackground);
     border: 1px solid var(--vscode-editorWidget-border);
@@ -212,4 +282,14 @@ button:hover {
 .empty-result {
     color: var(--vscode-descriptionForeground);
     font-style: italic;
+}
+
+@media (max-width: 768px) {
+    .inline-actions {
+        flex-direction: column;
+    }
+
+    .inline-actions button {
+        width: 100%;
+    }
 }

@@ -21,6 +21,63 @@ export type EmbeddingModelName = EmbeddingModelNameType;
 export type Metadata = Record<string, string | number | boolean | string[] | number[]>;
 
 /**
+ * Supported read capacity modes for serverless indexes.
+ */
+export type ReadCapacityMode = 'OnDemand' | 'Dedicated';
+
+/**
+ * Supported dedicated read node types.
+ */
+export type DedicatedReadNodeType = 'b1' | 't1';
+
+/**
+ * Manual scaling values for dedicated read nodes.
+ */
+export interface DedicatedReadCapacityManualConfig {
+    replicas: number;
+    shards: number;
+}
+
+/**
+ * Dedicated read capacity configuration.
+ */
+export interface DedicatedReadCapacityConfig {
+    node_type: DedicatedReadNodeType;
+    /**
+     * Pinecone control plane currently supports manual DRN scaling in this extension.
+     */
+    scaling: 'Manual';
+    manual: DedicatedReadCapacityManualConfig;
+}
+
+/**
+ * Serverless read capacity configuration.
+ */
+export interface ServerlessReadCapacity {
+    mode: ReadCapacityMode;
+    dedicated?: DedicatedReadCapacityConfig;
+}
+
+/**
+ * Runtime status for index read capacity.
+ */
+export interface ReadCapacityStatus {
+    mode?: ReadCapacityMode;
+    /** Runtime state string (for newer control-plane responses) */
+    state?: string;
+    /** Runtime status string (for compatibility with older responses) */
+    status?: string;
+    /** Runtime dedicated block (for newer control-plane responses) */
+    dedicated?: {
+        current_replicas?: number;
+        current_shards?: number;
+    };
+    /** Flat runtime fields retained for compatibility with older responses */
+    current_replicas?: number;
+    current_shards?: number;
+}
+
+/**
  * Represents a Pinecone vector index.
  * 
  * An index is a collection of vectors that can be queried for similarity search.
@@ -46,6 +103,8 @@ export interface IndexModel {
         ready: boolean;
         /** Current operational state */
         state: 'Initializing' | 'ScalingUp' | 'ScalingDown' | 'Terminating' | 'Ready';
+        /** Runtime read capacity status (when available) */
+        read_capacity?: ReadCapacityStatus;
     };
     /** Index specification (serverless or pod configuration) */
     spec: ServerlessSpec | PodSpec;
@@ -158,6 +217,8 @@ export interface ServerlessSpec {
         cloud: 'aws' | 'gcp' | 'azure';
         /** Cloud region (e.g., 'us-east-1', 'eu-west-1') */
         region: string;
+        /** Read capacity mode/configuration for serverless indexes */
+        read_capacity?: ServerlessReadCapacity;
     };
 }
 

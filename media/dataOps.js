@@ -6,6 +6,11 @@
     const upsertVectorSection = document.getElementById('upsert-vector-section');
     const upsertRecordsSection = document.getElementById('upsert-records-section');
     const upsertModeHint = document.getElementById('upsert-mode-hint');
+    const activeImportsList = document.getElementById('active-imports-list');
+    const activeImportsEmpty = document.getElementById('active-imports-empty');
+    const cancelImportBtn = document.getElementById('cancel-import-btn');
+    let activeImports = [];
+    let selectedActiveImportId = '';
 
     const actionResultIds = {
         upsertVectors: 'result-upsertVectors',
@@ -16,7 +21,8 @@
         updateByMetadata: 'result-updateByMetadata',
         deleteVectors: 'result-deleteVectors',
         listVectorIds: 'result-listVectorIds',
-        startImport: 'result-startImport'
+        startImport: 'result-startImport',
+        cancelImport: 'result-cancelImport'
     };
 
     function val(id) {
@@ -50,6 +56,88 @@
         }
         sectionResult.classList.add('hidden');
         sectionResult.innerHTML = '';
+    }
+
+    function formatDate(value) {
+        if (!value) {
+            return 'Unknown';
+        }
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) {
+            return String(value);
+        }
+        return parsed.toLocaleString();
+    }
+
+    function updateCancelImportState() {
+        if (!cancelImportBtn) {
+            return;
+        }
+        cancelImportBtn.disabled = !selectedActiveImportId;
+    }
+
+    function renderActiveImports(imports) {
+        activeImports = Array.isArray(imports) ? imports : [];
+        if (!activeImportsList || !activeImportsEmpty) {
+            return;
+        }
+
+        const selectedBefore = selectedActiveImportId;
+        activeImportsList.innerHTML = '';
+
+        if (activeImports.length === 0) {
+            selectedActiveImportId = '';
+            activeImportsEmpty.textContent = 'No active import jobs.';
+            activeImportsEmpty.className = 'jobs-summary empty-result';
+            updateCancelImportState();
+            return;
+        }
+
+        const hasExistingSelection = activeImports.some((job) => String(job.id || '') === selectedBefore);
+        selectedActiveImportId = hasExistingSelection ? selectedBefore : String(activeImports[0].id || '');
+
+        activeImports.forEach((job) => {
+            const row = document.createElement('label');
+            row.className = 'job-select-row';
+
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'active-import-job';
+            radio.value = String(job.id || '');
+            radio.checked = radio.value === selectedActiveImportId;
+            radio.addEventListener('change', () => {
+                selectedActiveImportId = radio.value;
+                updateCancelImportState();
+            });
+            row.appendChild(radio);
+
+            const content = document.createElement('div');
+            content.className = 'job-content';
+
+            const title = document.createElement('div');
+            title.className = 'job-title';
+            title.textContent = job.id ? String(job.id) : 'Unknown import job';
+            content.appendChild(title);
+
+            const namespace = job.namespace ? String(job.namespace) : '(default)';
+            const uri = job.uri ? String(job.uri) : 'Unknown URI';
+            const meta = document.createElement('div');
+            meta.className = 'job-meta';
+            meta.textContent = `${job.status || 'Unknown'} | Namespace: ${namespace} | Created: ${formatDate(job.created_at)}`;
+            content.appendChild(meta);
+
+            const detail = document.createElement('div');
+            detail.className = 'job-detail';
+            detail.textContent = `URI: ${uri} | Updated: ${formatDate(job.updated_at)}`;
+            content.appendChild(detail);
+
+            row.appendChild(content);
+            activeImportsList.appendChild(row);
+        });
+
+        activeImportsEmpty.textContent = '';
+        activeImportsEmpty.className = 'jobs-summary hidden';
+        updateCancelImportState();
     }
 
     function setUpsertMode(hasIntegratedEmbeddings) {
@@ -137,6 +225,12 @@
                     namespace: val('import-namespace'),
                     mode: val('import-mode'),
                     errorMode: val('import-error-mode')
+                };
+            case 'refreshActiveImports':
+                return {};
+            case 'cancelImport':
+                return {
+                    importId: selectedActiveImportId
                 };
             default:
                 return {};
@@ -366,6 +460,8 @@
                 return 'List Vector IDs';
             case 'startImport':
                 return 'Start Import';
+            case 'cancelImport':
+                return 'Cancel Import';
             default:
                 return 'Operation';
         }
@@ -393,6 +489,9 @@
                 indexNameSpan.textContent = message.indexName;
                 setUpsertMode(!!message.hasIntegratedEmbeddings);
                 break;
+            case 'activeImports':
+                renderActiveImports(message.imports || []);
+                break;
             case 'result':
                 setSectionResult(message.action, message.result);
                 break;
@@ -406,4 +505,5 @@
     });
 
     vscode.postMessage({ command: 'ready' });
+    updateCancelImportState();
 })();

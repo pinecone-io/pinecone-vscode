@@ -30,6 +30,12 @@ body {
     margin-top: 0;
 }
 
+.hint {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+    margin: 6px 0 0;
+}
+
 .form-group {
     margin-bottom: 10px;
 }

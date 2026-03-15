@@ -17,7 +17,10 @@ Thank you for your interest in contributing to the Pinecone VSCode Extension! Th
 
 For more detailed guides, see the `docs/` folder:
 
+- **[Documentation Index](docs/README.md)** - Hub for user and contributor docs
+- **[Development Guide](docs/development.md)** - Setup, validation, and packaging commands
 - **[Architecture Overview](docs/architecture.md)** - Understand the codebase structure and design
+- **[Marketplace README Notes](docs/marketplace-readme.md)** - Marketplace content and structure guidance
 - **[Debugging Guide](docs/debugging.md)** - How to debug the extension
 - **[Testing Guide](docs/testing.md)** - How to write and run tests
 

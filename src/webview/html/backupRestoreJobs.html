@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Backup/Restore Jobs</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h2>Backup/Restore Jobs: <span id="index-name">${indexName}</span></h2>
+                <p class="hint">Monitor active backup and restore jobs for this index.</p>
+            </div>
+            <button id="refresh-btn" class="secondary" type="button">Refresh</button>
+        </div>
+
+        <section class="card">
+            <h3>Active Backup Jobs</h3>
+            <p class="hint">Cancel performs best-effort backup deletion for the selected job.</p>
+            <div id="active-backups" class="jobs-list"></div>
+            <div class="actions-row">
+                <button id="cancel-backup-btn" type="button">Cancel Selected Backup</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>Backups</h3>
+            <p class="hint">Create a backup, view all backups for this index, and restore a selected backup.</p>
+            <div class="create-backup-row">
+                <div class="form-group">
+                    <label for="backup-name-input">Backup Name</label>
+                    <input id="backup-name-input" type="text" placeholder="my-index-backup-1">
+                </div>
+                <button id="create-backup-btn" type="button">Create Backup</button>
+            </div>
+            <div id="all-backups" class="jobs-list"></div>
+            <div class="actions-row">
+                <button id="restore-backup-btn" type="button">Restore Selected Backup</button>
+                <button id="delete-backup-btn" type="button" class="secondary">Delete Selected Backup</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3>Active Restore Jobs</h3>
+            <div id="active-restores" class="jobs-list"></div>
+        </section>
+
+        <div id="status-text" class="hint"></div>
+        <div id="error" class="error hidden"></div>
+        <div id="success" class="success hidden"></div>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

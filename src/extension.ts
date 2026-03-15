@@ -23,6 +23,8 @@ import { ApiKeysCommands } from './commands/apiKeys.commands';
 import { InferenceCommands } from './commands/inference.commands';
 import { logger } from './utils/logger';
 import { buildProjectContextFromItem } from './utils/treeItemHelpers';
+import { waitForIndexReadyForOperations } from './utils/indexReadiness';
+import { getErrorMessage } from './utils/errorHandling';
 
 /** URL for Pinecone documentation */
 const DOCS_URL = 'https://docs.pinecone.io';
@@ -96,13 +98,24 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('pinecone.viewBackups', (item) => indexCommands.viewBackups(item)),
         vscode.commands.registerCommand('pinecone.restoreBackup', (item) => indexCommands.restoreBackup(item)),
         vscode.commands.registerCommand('pinecone.deleteBackup', (item) => indexCommands.deleteBackup(item)),
-        vscode.commands.registerCommand('pinecone.viewRestoreJobs', () => indexCommands.viewRestoreJobs()),
+        vscode.commands.registerCommand('pinecone.viewRestoreJobs', (item) => indexCommands.viewRestoreJobs(item)),
         vscode.commands.registerCommand('pinecone.indexStats', (item) => indexCommands.showIndexStats(item)),
-        vscode.commands.registerCommand('pinecone.queryIndex', (item) => {
+        vscode.commands.registerCommand('pinecone.queryIndex', async (item) => {
             if (item?.resourceId && item?.metadata?.index?.host) {
                 const { name, host, embed } = item.metadata.index;
                 // Build project context for API authentication (required for JWT auth)
                 const projectContext = buildProjectContextFromItem(item);
+                try {
+                    await waitForIndexReadyForOperations(
+                        pineconeService,
+                        name,
+                        'Query',
+                        projectContext
+                    );
+                } catch (error: unknown) {
+                    vscode.window.showErrorMessage(getErrorMessage(error));
+                    return;
+                }
                 // Dynamic import of QueryPanel to reduce initial load time
                 import('./webview/queryPanel.js')
                     .then(({ QueryPanel }) => {

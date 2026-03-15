@@ -51,6 +51,7 @@ Bug fixes must include failing-before/passing-after tests for:
 - inference embedding parameter defaults (`input_type`) and override handling.
 - inference rerank token budgeting by model limit, including strict-limit extraction from API errors.
 - panel key scoping for one-dialog-per-resource/context behavior.
+- DRN readiness gating for tree availability, including describe-runtime fallback behavior.
 
 ### Error handling consistency
 

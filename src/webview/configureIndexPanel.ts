@@ -4,14 +4,22 @@ import * as fs from 'fs';
 import { PineconeService } from '../services/pineconeService';
 import { PineconeTreeDataProvider } from '../providers/pineconeTreeDataProvider';
 import { ProjectContext } from '../api/client';
+import { ServerlessSpec } from '../api/types';
 import { getErrorMessage } from '../utils/errorHandling';
 import { refreshExplorer } from '../utils/refreshExplorer';
+import { normalizeServerlessReadCapacity, parseReadCapacityPayload } from '../utils/readCapacity';
 
 interface ConfigureIndexMessage {
     command: 'ready' | 'submit';
     payload?: {
         deletionProtection?: string;
         tags?: Array<{ key: string; value: string }>;
+        readCapacity?: {
+            mode?: string;
+            nodeType?: string;
+            replicas?: string;
+            shards?: string;
+        };
     };
 }
 
@@ -22,6 +30,8 @@ export class ConfigureIndexPanel {
     private readonly panelKey: string;
     private isDisposed = false;
     private originalTags: Record<string, string> = {};
+    private hasIntegratedEmbeddings = false;
+    private initialReadCapacityMode: 'OnDemand' | 'Dedicated' = 'OnDemand';
 
     static createOrShow(
         extensionUri: vscode.Uri,
@@ -149,11 +159,24 @@ export class ConfigureIndexPanel {
             this.applyProjectContext();
             const index = await this.pineconeService.describeIndex(this.indexName);
             this.originalTags = { ...(index.tags || {}) };
+            this.hasIntegratedEmbeddings = !!index.embed;
+            const currentReadCapacity = ('serverless' in index.spec)
+                ? normalizeServerlessReadCapacity(index.spec as ServerlessSpec)
+                : { mode: 'OnDemand' as const };
+            this.initialReadCapacityMode = currentReadCapacity.mode;
             await this.panel.webview.postMessage({
                 command: 'init',
                 indexName: this.indexName,
                 deletionProtection: index.deletion_protection || 'disabled',
-                tags: this.originalTags
+                tags: this.originalTags,
+                hasIntegratedEmbeddings: this.hasIntegratedEmbeddings,
+                canSwitchToOnDemand: currentReadCapacity.mode !== 'Dedicated',
+                readCapacity: {
+                    mode: currentReadCapacity.mode,
+                    nodeType: currentReadCapacity.dedicated?.node_type || 'b1',
+                    replicas: String(currentReadCapacity.dedicated?.manual.replicas || 1),
+                    shards: String(currentReadCapacity.dedicated?.manual.shards || 1)
+                }
             });
         } catch (error: unknown) {
             await this.panel.webview.postMessage({
@@ -192,6 +215,16 @@ export class ConfigureIndexPanel {
                     tags[existingKey] = '';
                 }
             }
+            const readCapacity = parseReadCapacityPayload(payload?.readCapacity, {
+                allowDedicated: !this.hasIntegratedEmbeddings
+            });
+            if (readCapacity.error || !readCapacity.value) {
+                throw new Error(readCapacity.error || 'Read capacity is invalid.');
+            }
+            const readCapacityValue = readCapacity.value;
+            if (this.initialReadCapacityMode === 'Dedicated' && readCapacityValue.mode === 'OnDemand') {
+                throw new Error('Switching a Dedicated Read Nodes index back to OnDemand is not supported in this extension.');
+            }
 
             this.applyProjectContext();
 
@@ -200,9 +233,27 @@ export class ConfigureIndexPanel {
                 title: `Saving configuration for "${this.indexName}"...`,
                 cancellable: false
             }, async () => {
-                await this.pineconeService.configureIndex(this.indexName, {
+                const config: {
+                    deletion_protection: 'enabled' | 'disabled';
+                    tags: Record<string, string>;
+                    spec?: {
+                        serverless?: {
+                            read_capacity: ReturnType<typeof normalizeServerlessReadCapacity>;
+                        };
+                    };
+                } = {
                     deletion_protection: deletionProtection as 'enabled' | 'disabled',
                     tags
+                };
+                if (!this.hasIntegratedEmbeddings) {
+                    config.spec = {
+                        serverless: {
+                            read_capacity: readCapacityValue
+                        }
+                    };
+                }
+                await this.pineconeService.configureIndex(this.indexName, {
+                    ...config
                 });
             });
 

@@ -6,8 +6,16 @@
     const saveBtn = document.getElementById('save-btn');
     const indexNameEl = document.getElementById('index-name');
     const deletionProtectionSelect = document.getElementById('deletion-protection');
+    const readCapacityMode = document.getElementById('read-capacity-mode');
+    const readCapacityNodeType = document.getElementById('read-capacity-node-type');
+    const readCapacityReplicas = document.getElementById('read-capacity-replicas');
+    const readCapacityShards = document.getElementById('read-capacity-shards');
+    const dedicatedReadCapacity = document.getElementById('dedicated-read-capacity');
+    const readCapacityHint = document.getElementById('read-capacity-hint');
     const errorDiv = document.getElementById('error');
     const successDiv = document.getElementById('success');
+    let hasIntegratedEmbeddings = false;
+    let canSwitchToOnDemand = true;
 
     function showError(message) {
         errorDiv.textContent = message || 'Unknown error';
@@ -24,6 +32,44 @@
     function clearMessages() {
         errorDiv.classList.add('hidden');
         successDiv.classList.add('hidden');
+    }
+
+    function setReadCapacityMode() {
+        const mode = readCapacityMode.value || 'OnDemand';
+        if (mode === 'Dedicated') {
+            dedicatedReadCapacity.classList.remove('hidden');
+            return;
+        }
+        dedicatedReadCapacity.classList.add('hidden');
+    }
+
+    function setReadCapacityEditableState() {
+        const disabled = hasIntegratedEmbeddings;
+        readCapacityMode.disabled = disabled;
+        readCapacityNodeType.disabled = disabled;
+        readCapacityReplicas.disabled = disabled;
+        readCapacityShards.disabled = disabled;
+
+        const onDemandOption = readCapacityMode.querySelector('option[value="OnDemand"]');
+        if (onDemandOption) {
+            onDemandOption.disabled = !canSwitchToOnDemand;
+        }
+
+        if (!canSwitchToOnDemand && readCapacityMode.value === 'OnDemand') {
+            readCapacityMode.value = 'Dedicated';
+        }
+
+        if (disabled) {
+            readCapacityHint.textContent = 'Dedicated Read Nodes are disabled for integrated embedding indexes in this extension.';
+            dedicatedReadCapacity.classList.add('hidden');
+            return;
+        }
+        if (!canSwitchToOnDemand) {
+            readCapacityHint.textContent = 'This index is currently Dedicated. Switching back to OnDemand is not supported in this extension.';
+        } else {
+            readCapacityHint.textContent = 'Use OnDemand or configure Dedicated Read Nodes for BYOV indexes.';
+        }
+        setReadCapacityMode();
     }
 
     function addTagRow(key, value) {
@@ -88,6 +134,11 @@
         addTagRow('', '');
     });
 
+    readCapacityMode.addEventListener('change', () => {
+        clearMessages();
+        setReadCapacityMode();
+    });
+
     saveBtn.addEventListener('click', () => {
         clearMessages();
         const collected = collectTags();
@@ -100,7 +151,13 @@
             command: 'submit',
             payload: {
                 deletionProtection: deletionProtectionSelect.value,
-                tags: collected.tags
+                tags: collected.tags,
+                readCapacity: {
+                    mode: readCapacityMode.value,
+                    nodeType: readCapacityNodeType.value,
+                    replicas: readCapacityReplicas.value,
+                    shards: readCapacityShards.value
+                }
             }
         });
     });
@@ -113,6 +170,14 @@
                     indexNameEl.textContent = message.indexName;
                 }
                 deletionProtectionSelect.value = message.deletionProtection || 'disabled';
+                hasIntegratedEmbeddings = !!message.hasIntegratedEmbeddings;
+                canSwitchToOnDemand = message.canSwitchToOnDemand !== false;
+                const readCapacity = message.readCapacity || {};
+                readCapacityMode.value = readCapacity.mode || 'OnDemand';
+                readCapacityNodeType.value = readCapacity.nodeType || 'b1';
+                readCapacityReplicas.value = readCapacity.replicas || '1';
+                readCapacityShards.value = readCapacity.shards || '1';
+                setReadCapacityEditableState();
                 setTags(message.tags || {});
                 saveBtn.disabled = false;
                 clearMessages();

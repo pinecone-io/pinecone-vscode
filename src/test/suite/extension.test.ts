@@ -55,6 +55,7 @@ suite('Commands Test Suite', () => {
         assert.ok(commands.includes('pinecone.indexStats'), 'indexStats command should be registered');
         assert.ok(commands.includes('pinecone.createBackup'), 'createBackup command should be registered');
         assert.ok(commands.includes('pinecone.viewBackups'), 'viewBackups command should be registered');
+        assert.ok(commands.includes('pinecone.viewRestoreJobs'), 'viewRestoreJobs command should be registered');
         assert.ok(commands.includes('pinecone.addTags'), 'addTags command should be registered');
     });
 
@@ -161,6 +162,73 @@ suite('Menus Test Suite', () => {
         
         const menus = ext.packageJSON.contributes.menus;
         assert.ok(menus.commandPalette, 'Command palette menus should be defined');
+        const commandPalette = menus.commandPalette as Array<{ command: string; when?: string }>;
+        const visibleCommands = commandPalette
+            .filter((item) => item.when !== 'false')
+            .map((item) => item.command);
+
+        const expectedVisible = [
+            'pinecone.login',
+            'pinecone.logout',
+            'pinecone.refresh',
+            'pinecone.openDocs'
+        ];
+        assert.deepStrictEqual(
+            [...visibleCommands].sort(),
+            [...expectedVisible].sort(),
+            'Command palette should expose only utility/global commands'
+        );
+
+        const removedOverlapCommands = [
+            'pinecone.createIndex',
+            'pinecone.createAssistant',
+            'pinecone.openDataOps',
+            'pinecone.updateAssistant',
+            'pinecone.retrieveAssistantContext',
+            'pinecone.evaluateAssistantAnswer',
+            'pinecone.manageApiKeys',
+            'pinecone.openInferenceToolbox',
+            'pinecone.viewFileDetails'
+        ];
+
+        for (const command of removedOverlapCommands) {
+            const entry = commandPalette.find((item) => item.command === command);
+            assert.ok(entry, `${command} should have an explicit command palette entry`);
+            assert.strictEqual(entry?.when, 'false', `${command} should be hidden from command palette`);
+        }
+
+        const viewRestoreJobsEntry = commandPalette.find((item) => item.command === 'pinecone.viewRestoreJobs');
+        assert.ok(viewRestoreJobsEntry, 'viewRestoreJobs should have an explicit command palette entry');
+        assert.strictEqual(
+            viewRestoreJobsEntry?.when,
+            'false',
+            'viewRestoreJobs should not be user-visible in command palette'
+        );
+    });
+
+    test('Destructive commands should be explicitly hidden from command palette', async () => {
+        const ext = vscode.extensions.getExtension('pinecone.pinecone-vscode');
+        assert.ok(ext);
+
+        const commandPalette = ext.packageJSON.contributes.menus.commandPalette as Array<{
+            command: string;
+            when?: string;
+        }>;
+
+        const destructiveCommands = [
+            'pinecone.deleteIndex',
+            'pinecone.deleteBackup',
+            'pinecone.deleteAssistant',
+            'pinecone.deleteFile',
+            'pinecone.deleteNamespace',
+            'pinecone.deleteProject'
+        ];
+
+        for (const command of destructiveCommands) {
+            const entry = commandPalette.find((item) => item.command === command);
+            assert.ok(entry, `${command} should have a command palette menu contribution`);
+            assert.strictEqual(entry?.when, 'false', `${command} should be hidden from command palette`);
+        }
     });
 
     test('Index context menu order should match expected workflow', () => {
@@ -243,5 +311,30 @@ suite('Menus Test Suite', () => {
         const deleteFile = forFile.find(item => item.command === 'pinecone.deleteFile');
         assert.ok(deleteFile, 'pinecone.deleteFile should appear in file context menu');
         assert.strictEqual(deleteFile?.group, '2_delete');
+    });
+
+    test('Backups category context menu should expose Backup/Restore Jobs entry', () => {
+        const ext = vscode.extensions.getExtension('pinecone.pinecone-vscode');
+        assert.ok(ext);
+
+        const commands = ext.packageJSON.contributes.commands as Array<{
+            command: string;
+            title: string;
+        }>;
+        const viewRestoreJobsCommand = commands.find((item) => item.command === 'pinecone.viewRestoreJobs');
+        assert.ok(viewRestoreJobsCommand);
+        assert.strictEqual(viewRestoreJobsCommand?.title, 'Backup/Restore Jobs');
+
+        const contextMenus = ext.packageJSON.contributes.menus['view/item/context'] as Array<{
+            command: string;
+            when: string;
+            group: string;
+        }>;
+        const backupsCategoryEntry = contextMenus.find((item) =>
+            item.command === 'pinecone.viewRestoreJobs' &&
+            item.when.includes('viewItem == backups-category')
+        );
+        assert.ok(backupsCategoryEntry, 'Backup/Restore Jobs should appear on backups-category context menu');
+        assert.strictEqual(backupsCategoryEntry?.group, '2_view');
     });
 });

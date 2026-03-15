@@ -24,6 +24,37 @@
         </section>
 
         <section class="card">
+            <h3>Read Capacity</h3>
+            <p class="hint" id="read-capacity-hint">Use OnDemand or configure Dedicated Read Nodes for BYOV indexes.</p>
+            <div class="form-group">
+                <label for="read-capacity-mode">Mode</label>
+                <select id="read-capacity-mode">
+                    <option value="OnDemand">OnDemand</option>
+                    <option value="Dedicated">Dedicated</option>
+                </select>
+            </div>
+            <div id="dedicated-read-capacity" class="hidden">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="read-capacity-node-type">Node Type</label>
+                        <select id="read-capacity-node-type">
+                            <option value="b1">b1</option>
+                            <option value="t1">t1</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="read-capacity-replicas">Replicas</label>
+                        <input id="read-capacity-replicas" type="number" min="1" step="1" value="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="read-capacity-shards">Shards</label>
+                        <input id="read-capacity-shards" type="number" min="1" step="1" value="1">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
             <h3>Tags</h3>
             <p class="hint">Add, remove, or update tags. Duplicate keys are not allowed.</p>
             <div id="tags-list"></div>

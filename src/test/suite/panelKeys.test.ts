@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { ApiKeysPanel } from '../../webview/apiKeysPanel';
 import { AssistantToolsPanel } from '../../webview/assistantToolsPanel';
+import { BackupRestoreJobsPanel } from '../../webview/backupRestoreJobsPanel';
 import { ChatPanel } from '../../webview/chatPanel';
 import { ConfigureIndexPanel } from '../../webview/configureIndexPanel';
 import { CreateAssistantPanel } from '../../webview/createAssistantPanel';
@@ -97,6 +98,20 @@ suite('Webview panel key scoping', () => {
             configureClass.getPanelKey('Index-A', { id: 'Project-A' }),
             configureClass.getPanelKey('Index-B', { id: 'Project-A' })
         );
+    });
+
+    test('backup/restore jobs panel key is project+index scoped', () => {
+        const panelClass = BackupRestoreJobsPanel as unknown as {
+            getPanelKey: (indexName: string, projectContext?: { id?: string }) => string;
+        };
+
+        const keyA = panelClass.getPanelKey('Index-A', { id: 'Project-A' });
+        const keyB = panelClass.getPanelKey('index-a', { id: 'project-a' });
+        const keyC = panelClass.getPanelKey('index-a', { id: 'project-b' });
+
+        assert.strictEqual(keyA, 'project-a::index-a');
+        assert.strictEqual(keyA, keyB);
+        assert.notStrictEqual(keyA, keyC);
     });
 
     test('api keys panel key prefers explicit project item id over target project', () => {

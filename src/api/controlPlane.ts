@@ -16,7 +16,8 @@ import {
     RestoreJob, 
     CreateRestoreParams, 
     CreateRestoreResponse,
-    CreateIndexForModelRequest
+    CreateIndexForModelRequest,
+    ServerlessReadCapacity
 } from './types';
 import { normalizeHost } from './host';
 
@@ -28,8 +29,11 @@ export interface IndexConfigureOptions {
     deletion_protection?: 'enabled' | 'disabled';
     /** Update index tags */
     tags?: Record<string, string>;
-    /** Pod-specific configuration (replicas, pod type) */
+    /** Serverless and pod-specific configuration updates */
     spec?: {
+        serverless?: {
+            read_capacity?: ServerlessReadCapacity;
+        };
         pod?: {
             replicas?: number;
             pod_type?: string;
@@ -278,8 +282,8 @@ export class ControlPlaneApi {
      * @param backupId - ID of the backup to delete
      * @throws {PineconeApiError} When deletion fails
      */
-    async deleteBackup(backupId: string): Promise<void> {
-        return this.client.request<void>('DELETE', `/backups/${backupId}`);
+    async deleteBackup(backupId: string, projectContext?: ProjectContext): Promise<void> {
+        return this.client.request<void>('DELETE', `/backups/${backupId}`, { projectContext });
     }
 
     // ========================================================================
@@ -311,7 +315,10 @@ export class ControlPlaneApi {
      * console.log(`Restore job started: ${response.restore_job_id}`);
      * ```
      */
-    async createIndexFromBackup(params: CreateRestoreParams): Promise<CreateRestoreResponse> {
+    async createIndexFromBackup(
+        params: CreateRestoreParams,
+        projectContext?: ProjectContext
+    ): Promise<CreateRestoreResponse> {
         return this.client.request<CreateRestoreResponse>(
             'POST', 
             `/backups/${params.backup_id}/create-index`,
@@ -320,7 +327,8 @@ export class ControlPlaneApi {
                     name: params.name,
                     deletion_protection: params.deletion_protection,
                     tags: params.tags
-                }
+                },
+                projectContext
             }
         );
     }
@@ -340,10 +348,13 @@ export class ControlPlaneApi {
      * }
      * ```
      */
-    async listRestoreJobs(params?: { 
-        limit?: number; 
-        pagination_token?: string 
-    }): Promise<{ data: RestoreJob[]; pagination?: { next?: string } }> {
+    async listRestoreJobs(
+        params?: {
+            limit?: number;
+            pagination_token?: string;
+        },
+        projectContext?: ProjectContext
+    ): Promise<{ data: RestoreJob[]; pagination?: { next?: string } }> {
         const queryParams: Record<string, string> = {};
         if (params?.limit !== undefined) {
             queryParams.limit = params.limit.toString();
@@ -355,7 +366,10 @@ export class ControlPlaneApi {
         return this.client.request<{ data: RestoreJob[]; pagination?: { next?: string } }>(
             'GET', 
             '/restore-jobs',
-            { queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined }
+            {
+                queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+                projectContext
+            }
         );
     }
 
@@ -378,7 +392,7 @@ export class ControlPlaneApi {
      * }
      * ```
      */
-    async describeRestoreJob(restoreJobId: string): Promise<RestoreJob> {
-        return this.client.request<RestoreJob>('GET', `/restore-jobs/${restoreJobId}`);
+    async describeRestoreJob(restoreJobId: string, projectContext?: ProjectContext): Promise<RestoreJob> {
+        return this.client.request<RestoreJob>('GET', `/restore-jobs/${restoreJobId}`, { projectContext });
     }
 }
