@@ -50,7 +50,7 @@ textarea {
 
 .file-row {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) 2fr;
+    grid-template-columns: minmax(260px, 1fr) 2fr auto;
     gap: 10px;
     align-items: start;
     padding: 8px 0;
@@ -80,6 +80,15 @@ textarea {
 
 .file-metadata:disabled {
     opacity: 0.7;
+}
+
+.file-multimodal-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 400;
+    margin: 0;
+    white-space: nowrap;
 }
 
 .actions {

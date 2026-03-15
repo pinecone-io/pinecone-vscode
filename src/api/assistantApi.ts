@@ -917,6 +917,7 @@ export class AssistantApi {
      * @param assistantName - Name of the assistant
      * @param filePath - Local path to the file to upload
      * @param metadata - Optional metadata to associate with the file
+     * @param multimodal - Optional flag to ingest document as multimodal
      * @param projectContext - Optional project context for per-request auth (required for JWT auth)
      * @returns The created file model (status will be 'Processing' initially)
      * @throws {PineconeApiError} When upload fails
@@ -929,6 +930,7 @@ export class AssistantApi {
      *   'my-assistant',
      *   '/path/to/document.pdf',
      *   { category: 'documentation' },
+     *   true,
      *   projectContext
      * );
      * console.log(`Uploaded ${file.name}, status: ${file.status}`);
@@ -939,6 +941,7 @@ export class AssistantApi {
         assistantName: string, 
         filePath: string, 
         metadata?: Record<string, unknown>,
+        multimodal?: boolean,
         projectContext?: ProjectContext
     ): Promise<FileModel> {
         const formData = new FormData();
@@ -953,6 +956,7 @@ export class AssistantApi {
         return this.client.request<FileModel>('POST', `/assistant/files/${assistantName}`, {
             host: normalizeHost(host),
             body: formData,
+            queryParams: multimodal ? { multimodal: 'true' } : undefined,
             projectContext
         });
     }

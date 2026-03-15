@@ -51,6 +51,11 @@ suite('Index Commands Test Suite', () => {
         assert.ok(commands.includes('pinecone.viewBackups'));
     });
 
+    test('viewRestoreJobs command should be executable', async () => {
+        const commands = await vscode.commands.getCommands(true);
+        assert.ok(commands.includes('pinecone.viewRestoreJobs'));
+    });
+
     test('addTags command should be executable', async () => {
         const commands = await vscode.commands.getCommands(true);
         assert.ok(commands.includes('pinecone.addTags'));
@@ -179,6 +184,7 @@ suite('Command Enablement Test Suite', () => {
             'pinecone.indexStats',
             'pinecone.createBackup',
             'pinecone.viewBackups',
+            'pinecone.viewRestoreJobs',
             'pinecone.addTags',
             'pinecone.openDataOps',
             'pinecone.createAssistant',

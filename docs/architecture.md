@@ -4,6 +4,7 @@ This document describes the architecture of the Pinecone VSCode Extension.
 
 ## Related Documentation
 
+- [Documentation Index](README.md) - Entry point for user/contributor docs
 - [API Reference](api-reference.md) - Detailed API documentation for contributors
 - [Testing Guide](testing.md) - How to write and run tests
 - [Debugging Guide](debugging.md) - How to debug the extension
@@ -261,7 +262,9 @@ scoped to a specific project.
 
 - **ControlPlaneApi**: Index CRUD, backups, restore jobs, configuration
   - `createIndex()`: Standard indexes with user-provided vectors
+    - Supports serverless read capacity mode (`OnDemand` or `Dedicated` with manual scaling)
   - `createIndexForModel()`: Indexes with integrated embeddings (auto text-to-vector)
+    - Extension policy keeps integrated-embedding creation on `OnDemand` read capacity
 - **DataPlaneApi**: Vector operations
   - `query()`: Vector-based similarity search for standard indexes
   - `search()`: Text-based search for indexes with integrated embeddings
@@ -282,6 +285,22 @@ converts text to vectors using a hosted model:
 The Query Panel detects indexes with integrated embeddings (via the `embed` field)
 and shows a text input instead of a vector input. Text queries are sent to the
 `/records/search` endpoint which auto-embeds the query before searching.
+
+#### Dedicated Read Nodes (DRN)
+
+For BYOV serverless indexes, the extension supports Dedicated Read Nodes with manual scaling:
+
+- Mode: `OnDemand` or `Dedicated`
+- Node types: `b1`, `t1`
+- Scaling: `manual` with replicas/shards
+
+Integrated-embedding indexes are intentionally restricted to `OnDemand` in this extension.
+
+Readiness behavior for DRN is conservative:
+
+- index operations remain disabled while DRN is migrating/scaling,
+- tree availability uses describe-index runtime state,
+- if runtime state cannot be verified, DRN indexes remain unavailable until the next successful refresh.
 
 ### Streaming Chat (SSE)
 
@@ -409,8 +428,13 @@ Interactive panels for complex operations:
 
 **DataOpsPanel** (`dataOpsPanel.ts` + `dataOps.html` + `dataOps.js`):
 - Structured forms for vector upsert/fetch/update/delete/list
-- Import lifecycle operation (start)
+- Import lifecycle operations (start, active-job monitoring, cancel selected active import)
 - Operation results rendered inline under each section using match-style cards/tables
+
+**BackupRestoreJobsPanel** (`backupRestoreJobsPanel.ts` + `backupRestoreJobs.html` + `backupRestoreJobs.js`):
+- Index-scoped backup/restore job monitoring dialog opened from the Backups category context menu
+- Active backup jobs section with single-selection best-effort cancel (delete backup)
+- Active restore jobs section with status-only rendering
 
 **AssistantToolsPanel** (`assistantToolsPanel.ts` + `assistantTools.html` + `assistantTools.js`):
 - Mode-scoped dialogs opened via separate commands:
@@ -422,10 +446,13 @@ Interactive panels for complex operations:
 **CreateIndexPanel** (`createIndexPanel.ts` + `createIndex.html` + `createIndex.js`):
 - Full create-index workflow in a dedicated dialog (standard vs integrated embeddings)
 - Cloud/region/model/dimension dynamic form behavior
+- BYOV read-capacity controls (`OnDemand` vs `Dedicated` with manual node type/replicas/shards)
+- Integrated mode guard that rejects dedicated-read-capacity payloads
 
 **ConfigureIndexPanel** (`configureIndexPanel.ts` + `configureIndex.html` + `configureIndex.js`):
-- Dedicated configuration dialog for deletion protection + tags
+- Dedicated configuration dialog for deletion protection + tags + read capacity
 - Loads current index configuration before edit
+- Disables DRN editing for integrated-embedding indexes while preserving tag/protection updates
 
 **UploadMetadataDialog** (`uploadMetadataDialog.ts` + `uploadMetadata.html` + `uploadMetadata.js`):
 - Per-file metadata entry for assistant uploads
@@ -536,6 +563,8 @@ TreeDataProvider.getChildren(element)
 - **viewsWelcome**: Login prompt when not authenticated
 - **commands**: All command definitions
 - **menus**: Context menus and command palette items
+  - Command palette policy is utility-only (`login`, `logout`, `refresh`, `openDocs`)
+  - Operational commands are tree-context driven and explicitly hidden from command palette
 - **configuration**: Extension settings
 
 ### Extension Settings

@@ -26,3 +26,5 @@ docs/**
 coverage/**
 .nyc_output/**
 *.vsix
+.env
+.env.*

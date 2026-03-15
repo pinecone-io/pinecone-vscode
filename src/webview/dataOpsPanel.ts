@@ -9,9 +9,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { PineconeService } from '../services/pineconeService';
 import { ProjectContext } from '../api/client';
-import { Metadata } from '../api/types';
+import { ImportJob, Metadata } from '../api/types';
 import { classifyError } from '../utils/errorHandling';
 import { parseOptionalJsonObject, parseOptionalNumberArray } from '../utils/inputValidation';
+import { collectPaginatedData, getActiveImports } from '../utils/jobStatus';
 
 interface DataOpsMessage {
     command: string;
@@ -103,6 +104,7 @@ export class DataOpsPanel {
             indexName,
             hasIntegratedEmbeddings
         });
+        void this.sendActiveImports();
     }
 
     private dispose(): void {
@@ -159,6 +161,7 @@ export class DataOpsPanel {
                         indexName: this.indexName,
                         hasIntegratedEmbeddings: this.hasIntegratedEmbeddings
                     });
+                    await this.sendActiveImports();
                     return;
                 case 'upsertVectors': {
                     if (this.hasIntegratedEmbeddings) {
@@ -358,6 +361,29 @@ export class DataOpsPanel {
                         this.projectContext
                     );
                     await this.sendResult(message.command, response);
+                    await this.sendActiveImports();
+                    return;
+                }
+                case 'refreshActiveImports': {
+                    await this.sendActiveImports();
+                    return;
+                }
+                case 'cancelImport': {
+                    const importId = String(payload.importId || '').trim();
+                    if (!importId) {
+                        throw new Error('Select an active import job to cancel.');
+                    }
+
+                    await dataPlane.cancelImport(
+                        this.indexHost,
+                        importId,
+                        this.projectContext
+                    );
+                    await this.sendResult(message.command, {
+                        id: importId,
+                        canceled: true
+                    });
+                    await this.sendActiveImports();
                     return;
                 }
                 default:
@@ -383,5 +409,34 @@ export class DataOpsPanel {
             action,
             result
         });
+    }
+
+    private async sendActiveImports(): Promise<void> {
+        try {
+            const dataPlane = this.pineconeService.getDataPlane();
+            const imports = await collectPaginatedData<ImportJob>(
+                (paginationToken) => dataPlane.listImports(
+                    this.indexHost,
+                    100,
+                    paginationToken,
+                    this.projectContext
+                )
+            );
+            const activeImports = getActiveImports(imports);
+            await this.panel.webview.postMessage({
+                command: 'activeImports',
+                imports: activeImports
+            });
+        } catch (error: unknown) {
+            const classified = classifyError(error);
+            if (classified.category === 'not_found') {
+                await this.panel.webview.postMessage({
+                    command: 'activeImports',
+                    imports: []
+                });
+                return;
+            }
+            throw error;
+        }
     }
 }

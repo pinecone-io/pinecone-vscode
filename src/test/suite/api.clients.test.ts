@@ -1,4 +1,7 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { PineconeClient, RequestOptions, ProjectContext } from '../../api/client';
 import { ControlPlaneApi } from '../../api/controlPlane';
 import { DataPlaneApi } from '../../api/dataPlane';
@@ -87,6 +90,91 @@ suite('API Clients (Production Classes)', () => {
             await api.describeIndexStats('https://idx.svc.us-east-1.pinecone.io');
 
             assert.strictEqual(client.calls[0].options?.host, 'https://idx.svc.us-east-1.pinecone.io');
+        });
+
+        test('configureIndex forwards serverless read_capacity patch body', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse(sampleIndex('drn-index'));
+
+            const api = new ControlPlaneApi(client as unknown as PineconeClient);
+            await api.configureIndex('drn-index', {
+                spec: {
+                    serverless: {
+                        read_capacity: {
+                            mode: 'Dedicated',
+                            dedicated: {
+                                node_type: 'b1',
+                                scaling: 'Manual',
+                                manual: {
+                                    replicas: 2,
+                                    shards: 3
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            assert.strictEqual(client.calls.length, 1);
+            assert.strictEqual(client.calls[0].method, 'PATCH');
+            assert.strictEqual(client.calls[0].path, '/indexes/drn-index');
+            assert.deepStrictEqual(client.calls[0].options?.body, {
+                spec: {
+                    serverless: {
+                        read_capacity: {
+                            mode: 'Dedicated',
+                            dedicated: {
+                                node_type: 'b1',
+                                scaling: 'Manual',
+                                manual: {
+                                    replicas: 2,
+                                    shards: 3
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+        test('deleteBackup forwards project context', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({});
+            const api = new ControlPlaneApi(client as unknown as PineconeClient);
+            const projectContext: ProjectContext = {
+                id: 'proj-1',
+                name: 'Project One',
+                organizationId: 'org-1'
+            };
+
+            await api.deleteBackup('backup-123', projectContext);
+
+            assert.strictEqual(client.calls.length, 1);
+            assert.strictEqual(client.calls[0].method, 'DELETE');
+            assert.strictEqual(client.calls[0].path, '/backups/backup-123');
+            assert.deepStrictEqual(client.calls[0].options?.projectContext, projectContext);
+        });
+
+        test('listRestoreJobs forwards pagination and project context', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({ data: [], pagination: { next: 'token-2' } });
+            const api = new ControlPlaneApi(client as unknown as PineconeClient);
+            const projectContext: ProjectContext = {
+                id: 'proj-1',
+                name: 'Project One',
+                organizationId: 'org-1'
+            };
+
+            await api.listRestoreJobs({ limit: 50, pagination_token: 'token-1' }, projectContext);
+
+            assert.strictEqual(client.calls.length, 1);
+            assert.strictEqual(client.calls[0].method, 'GET');
+            assert.strictEqual(client.calls[0].path, '/restore-jobs');
+            assert.deepStrictEqual(client.calls[0].options?.queryParams, {
+                limit: '50',
+                pagination_token: 'token-1'
+            });
+            assert.deepStrictEqual(client.calls[0].options?.projectContext, projectContext);
         });
     });
 
@@ -273,6 +361,39 @@ suite('API Clients (Production Classes)', () => {
                 answer: 'a',
                 ground_truth_answer: 'gt'
             });
+        });
+
+        test('uploadFile supports multimodal query param', async () => {
+            const client = new MockRequestClient();
+            client.enqueueResponse({
+                id: 'file-1',
+                name: 'doc.pdf',
+                status: 'Processing',
+                percent_done: 0,
+                created_on: new Date().toISOString(),
+                updated_on: new Date().toISOString(),
+                size: 128,
+                multimodal: true
+            });
+            const api = new AssistantApi(client as unknown as PineconeClient);
+            const tmpPath = path.join(os.tmpdir(), `pc-upload-${Date.now()}.txt`);
+            fs.writeFileSync(tmpPath, 'hello', 'utf8');
+
+            try {
+                await api.uploadFile(
+                    'asst.svc.us-east-1.pinecone.io',
+                    'my-assistant',
+                    tmpPath,
+                    { category: 'docs' },
+                    true
+                );
+            } finally {
+                fs.unlinkSync(tmpPath);
+            }
+
+            assert.strictEqual(client.calls[0].method, 'POST');
+            assert.strictEqual(client.calls[0].path, '/assistant/files/my-assistant');
+            assert.deepStrictEqual(client.calls[0].options?.queryParams, { multimodal: 'true' });
         });
     });
 

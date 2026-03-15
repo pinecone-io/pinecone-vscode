@@ -3,7 +3,7 @@
   "displayName": "Pinecone",
   "description": "Manage Pinecone vector databases and AI assistants directly from VSCode",
   "version": "0.1.0",
-  "publisher": "pinecone",
+  "publisher": "Pinecone",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -17,19 +17,23 @@
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other",
+    "AI",
     "Machine Learning",
     "Data Science"
   ],
   "keywords": [
     "pinecone",
+    "vector database",
     "vector",
     "database",
-    "embeddings",
     "ai",
+    "ml",
     "machine learning",
+    "data science",
+    "agents",
     "rag",
-    "semantic search"
+    "semantic search",
+    "recommendation system"
   ],
   "activationEvents": [
     "onView:pineconeExplorer",
@@ -135,7 +139,7 @@
       },
       {
         "command": "pinecone.viewRestoreJobs",
-        "title": "View All Restore Jobs",
+        "title": "Backup/Restore Jobs",
         "category": "Pinecone",
         "enablement": "pinecone.isAuthenticated"
       },
@@ -429,6 +433,10 @@
       ],
       "commandPalette": [
         {
+          "command": "pinecone.login",
+          "when": "!pinecone.isAuthenticated"
+        },
+        {
           "command": "pinecone.logout",
           "when": "pinecone.isAuthenticated"
         },
@@ -437,44 +445,123 @@
           "when": "pinecone.isAuthenticated"
         },
         {
-          "command": "pinecone.createIndex",
-          "when": "pinecone.isAuthenticated"
+          "command": "pinecone.openDocs"
         },
         {
-          "command": "pinecone.createAssistant",
-          "when": "pinecone.isAuthenticated"
+          "command": "pinecone.createIndex",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.queryIndex",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.indexStats",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.createBackup",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.viewBackups",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.restoreBackup",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.deleteBackup",
+          "when": "false"
         },
         {
           "command": "pinecone.viewRestoreJobs",
-          "when": "pinecone.isAuthenticated"
+          "when": "false"
+        },
+        {
+          "command": "pinecone.addTags",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.configureIndex",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.deleteIndex",
+          "when": "false"
         },
         {
           "command": "pinecone.openDataOps",
-          "when": "pinecone.isAuthenticated"
+          "when": "false"
+        },
+        {
+          "command": "pinecone.createAssistant",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.chatWithAssistant",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.deleteAssistant",
+          "when": "false"
         },
         {
           "command": "pinecone.updateAssistant",
-          "when": "pinecone.isAuthenticated"
+          "when": "false"
         },
         {
           "command": "pinecone.retrieveAssistantContext",
-          "when": "pinecone.isAuthenticated"
+          "when": "false"
         },
         {
           "command": "pinecone.evaluateAssistantAnswer",
-          "when": "pinecone.isAuthenticated"
+          "when": "false"
         },
         {
-          "command": "pinecone.manageApiKeys",
-          "when": "pinecone.isAuthenticated"
+          "command": "pinecone.uploadFiles",
+          "when": "false"
         },
         {
-          "command": "pinecone.openInferenceToolbox",
-          "when": "pinecone.isAuthenticated"
+          "command": "pinecone.deleteFile",
+          "when": "false"
         },
         {
           "command": "pinecone.viewFileDetails",
-          "when": "pinecone.isAuthenticated"
+          "when": "false"
+        },
+        {
+          "command": "pinecone.createNamespace",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.describeNamespace",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.deleteNamespace",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.createProject",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.deleteProject",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.renameProject",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.manageApiKeys",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.openInferenceToolbox",
+          "when": "false"
         }
       ]
     },
@@ -516,7 +603,7 @@
     "test:coverage": "rm -rf .coverage .nyc_output coverage && NODE_V8_COVERAGE=.coverage vscode-test --coverage && npm run coverage:check",
     "test:integration": "npm run compile:tsc && vscode-test --config .vscode-test.integration.mjs",
     "coverage:check": "node scripts/check-coverage-output.js",
-    "clean:artifacts": "find . -name .DS_Store -type f -delete && rm -rf .vscode-test"
+    "clean:artifacts": "node scripts/clean-workspace.js"
   },
   "devDependencies": {
     "@types/form-data": "^2.2.1",

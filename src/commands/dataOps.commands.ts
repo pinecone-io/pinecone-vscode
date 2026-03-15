@@ -8,6 +8,8 @@ import * as vscode from 'vscode';
 import { PineconeService } from '../services/pineconeService';
 import { PineconeTreeItem } from '../providers/treeItems';
 import { buildProjectContextFromItem } from '../utils/treeItemHelpers';
+import { getErrorMessage } from '../utils/errorHandling';
+import { waitForIndexReadyForOperations } from '../utils/indexReadiness';
 
 export class DataOpsCommands {
     constructor(
@@ -20,6 +22,20 @@ export class DataOpsCommands {
             vscode.window.showErrorMessage('Unable to open Data Ops: index information not available.');
             return;
         }
+        const projectContext = buildProjectContextFromItem(item);
+
+        try {
+            await waitForIndexReadyForOperations(
+                this.pineconeService,
+                item.resourceId,
+                'Data Ops',
+                projectContext
+            );
+        } catch (error: unknown) {
+            vscode.window.showErrorMessage(getErrorMessage(error));
+            return;
+        }
+
         const hasIntegratedEmbeddings = !!item.metadata.index.embed;
 
         const { DataOpsPanel } = await import('../webview/dataOpsPanel.js');
@@ -29,7 +45,7 @@ export class DataOpsCommands {
             item.resourceId,
             item.metadata.index.host,
             hasIntegratedEmbeddings,
-            buildProjectContextFromItem(item)
+            projectContext
         );
     }
 }

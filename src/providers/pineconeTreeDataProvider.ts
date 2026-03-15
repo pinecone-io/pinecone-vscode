@@ -36,6 +36,7 @@ import { ProjectContext } from '../api/client';
 import { AUTH_CONTEXTS } from '../utils/constants';
 import { createComponentLogger } from '../utils/logger';
 import { classifyError } from '../utils/errorHandling';
+import { getReadCapacityTransitionState, summarizeReadCapacity } from '../utils/readCapacity';
 
 /** Logger for tree data provider operations */
 const log = createComponentLogger('TreeDataProvider');
@@ -477,6 +478,31 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
 
         try {
             const indexes = await this.pineconeService.listIndexes(projectContext);
+
+            const serverlessIndexNames = indexes
+                .filter((idx) => !isPodIndex(idx))
+                .map((idx) => idx.name);
+
+            const runtimeByIndexName = new Map<string, IndexModel>();
+            const describeFailedByIndexName = new Set<string>();
+            if (serverlessIndexNames.length > 0) {
+                const described = await Promise.all(
+                    serverlessIndexNames.map(async (indexName) => {
+                        try {
+                            return await this.pineconeService.getControlPlane().describeIndex(indexName, projectContext);
+                        } catch {
+                            describeFailedByIndexName.add(indexName);
+                            log.warn(`Failed to describe serverless index "${indexName}" for runtime readiness; using conservative DRN fallback state.`);
+                            return undefined;
+                        }
+                    })
+                );
+                for (const describedIndex of described) {
+                    if (describedIndex?.name) {
+                        runtimeByIndexName.set(describedIndex.name, describedIndex);
+                    }
+                }
+            }
             
             if (indexes.length === 0) {
                 return [
@@ -491,12 +517,30 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
                 ];
             }
             
-            return indexes.map(idx => {
+            return indexes.map((listedIndex) => {
+                const idx = runtimeByIndexName.get(listedIndex.name) || listedIndex;
                 const isPod = isPodIndex(idx);
                 const state = idx.status?.state?.toLowerCase() || '';
                 const isReady = state === 'ready';
                 const isTerminating = state === 'terminating';
-                const isInitializing = !isReady && !isTerminating && !isPod;
+                const readCapacity = summarizeReadCapacity(idx);
+                const listedReadCapacity = summarizeReadCapacity(listedIndex);
+                const describeFailed = describeFailedByIndexName.has(listedIndex.name);
+                const detectedReadCapacityTransition = getReadCapacityTransitionState(idx);
+                const readCapacityTransition = (
+                    !detectedReadCapacityTransition.transitioning
+                    && describeFailed
+                    && listedReadCapacity.mode === 'Dedicated'
+                )
+                    ? {
+                        transitioning: true,
+                        phase: 'Updating' as const,
+                        status: 'DescribeFailed',
+                        reason: 'Unable to verify DRN runtime status yet. Actions are disabled until status can be confirmed.'
+                    }
+                    : detectedReadCapacityTransition;
+                const isReadCapacityTransitioning = readCapacityTransition.transitioning;
+                const isInitializing = (!isReady && !isTerminating && !isPod) || isReadCapacityTransitioning;
 
                 let itemType = PineconeItemType.Index;
                 if (isPod) {
@@ -518,7 +562,13 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
                 } else if (isTerminating) {
                     label = `${idx.name} (Deleting)`;
                 } else if (isInitializing) {
-                    label = `${idx.name} (Initializing)`;
+                    label = isReadCapacityTransitioning
+                        ? `${idx.name} (DRN ${readCapacityTransition.phase || 'Updating'})`
+                        : `${idx.name} (Initializing)`;
+                } else {
+                    if (readCapacity.mode === 'Dedicated') {
+                        label = `${idx.name} (DRN)`;
+                    }
                 }
 
                 // Include project and organization in metadata so index commands and
@@ -538,12 +588,28 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
                 } else if (isTerminating) {
                     item.tooltip = 'Index is being deleted. It will disappear from the list shortly.';
                 } else if (isInitializing) {
-                    item.tooltip = `Index is initializing (State: ${idx.status?.state || 'Unknown'}). Actions disabled until Ready.`;
+                    if (isReadCapacityTransitioning) {
+                        item.tooltip = [
+                            `DRN status: ${readCapacityTransition.status || 'Updating'}`,
+                            readCapacityTransition.reason || 'Dedicated read capacity is still converging.',
+                            'Actions are disabled until DRN migration/scaling completes.'
+                        ].join('\n');
+                    } else {
+                        item.tooltip = `Index is initializing (State: ${idx.status?.state || 'Unknown'}). Actions disabled until Ready.`;
+                    }
                 } else {
                     // Safe access for serverless spec properties
                     const cloud = 'serverless' in idx.spec ? idx.spec.serverless.cloud : 'Unknown';
                     const region = 'serverless' in idx.spec ? idx.spec.serverless.region : 'Unknown';
-                    item.tooltip = `Serverless Index (${cloud} - ${region})`;
+                    const readCapacityText = readCapacity.mode === 'Dedicated'
+                        ? `Dedicated (${[
+                            readCapacity.nodeType || 'unknown',
+                            (readCapacity.desiredReplicas && readCapacity.desiredShards)
+                                ? `desired ${readCapacity.desiredReplicas}r/${readCapacity.desiredShards}s`
+                                : undefined
+                        ].filter(Boolean).join('; ')})`
+                        : 'OnDemand';
+                    item.tooltip = `Serverless Index (${cloud} - ${region})\nRead Capacity: ${readCapacityText}`;
                 }
                 
                 return item;

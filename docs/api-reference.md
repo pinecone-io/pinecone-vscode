@@ -70,7 +70,7 @@ Notes:
 
 - `search` uses `/records/namespaces/{namespace}/search`.
 - Empty namespace is normalized to `__default__`.
-- Current Data Ops UI exposes import `start` action.
+- Data Ops UI exposes import start plus active-job status and cancel for selected active jobs.
 
 ### `NamespaceApi` (`src/api/namespaceApi.ts`)
 
@@ -117,6 +117,34 @@ Admin/org/project/API-key operations:
 
 - `parseOptionalJsonObject(input, errorMessage?)`
 - `parseOptionalNumberArray(input, errorMessage?)`
+
+### `src/utils/readCapacity.ts`
+
+Helpers for serverless read-capacity payloads and DRN runtime status:
+
+- `parseReadCapacityPayload(...)`
+- `normalizeServerlessReadCapacity(...)`
+- `summarizeReadCapacity(...)`
+- `getReadCapacityTransitionState(...)`
+
+Used by create/configure flows, index stats formatting, and tree readiness labeling.
+
+### `src/utils/indexReadiness.ts`
+
+Operation gating helpers for index commands:
+
+- `getIndexOperationBlockReason(index)`
+- `waitForIndexReadyForOperations(...)`
+
+Blocks operations until both base index state and DRN runtime state are ready.
+
+### `src/utils/jobStatus.ts`
+
+Shared status normalization/filter helpers for:
+
+- backup jobs,
+- restore jobs,
+- import jobs.
 
 ### `src/webview/uploadMetadataDialog.ts`
 

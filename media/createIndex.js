@@ -7,6 +7,8 @@
     const standardVectorType = document.getElementById('standard-vector-type');
     const standardDimensionGroup = document.getElementById('standard-dimension-group');
     const standardMetricGroup = document.getElementById('standard-metric-group');
+    const standardReadCapacityMode = document.getElementById('standard-read-capacity-mode');
+    const standardDedicatedReadCapacity = document.getElementById('standard-dedicated-read-capacity');
     const integratedModelSelect = document.getElementById('integrated-model');
     const integratedDimensionSelect = document.getElementById('integrated-dimension');
     const integratedDimensionGroup = document.getElementById('integrated-dimension-group');
@@ -51,6 +53,14 @@
         }
         standardDimensionGroup.classList.remove('hidden');
         standardMetricGroup.classList.remove('hidden');
+    }
+
+    function setStandardReadCapacityMode() {
+        if (standardReadCapacityMode.value === 'Dedicated') {
+            standardDedicatedReadCapacity.classList.remove('hidden');
+            return;
+        }
+        standardDedicatedReadCapacity.classList.add('hidden');
     }
 
     function setRegionOptions(cloudSelectId, regionSelectId) {
@@ -116,7 +126,13 @@
                 dimension: value('standard-dimension'),
                 metric: value('standard-metric'),
                 cloud: value('standard-cloud'),
-                region: value('standard-region')
+                region: value('standard-region'),
+                readCapacity: {
+                    mode: value('standard-read-capacity-mode'),
+                    nodeType: value('standard-read-capacity-node-type'),
+                    replicas: value('standard-read-capacity-replicas'),
+                    shards: value('standard-read-capacity-shards')
+                }
             },
             integrated: {
                 model: value('integrated-model'),
@@ -136,6 +152,11 @@
     standardVectorType.addEventListener('change', () => {
         clearError();
         setStandardVectorType();
+    });
+
+    standardReadCapacityMode.addEventListener('change', () => {
+        clearError();
+        setStandardReadCapacityMode();
     });
 
     document.getElementById('standard-cloud').addEventListener('change', () => {
@@ -169,6 +190,7 @@
                 refreshIntegratedModelOptions();
                 setMode();
                 setStandardVectorType();
+                setStandardReadCapacityMode();
                 createBtn.disabled = false;
                 break;
             case 'error':

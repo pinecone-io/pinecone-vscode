@@ -41,6 +41,7 @@ label {
 }
 
 input[type="text"],
+input[type="number"],
 select {
     width: 100%;
     padding: 8px;
@@ -55,6 +56,15 @@ select {
     color: var(--vscode-descriptionForeground);
     font-size: 0.9em;
     margin: 0 0 8px;
+}
+
+.form-row {
+    display: flex;
+    gap: 12px;
+}
+
+.form-row .form-group {
+    flex: 1;
 }
 
 .tag-row {
@@ -120,6 +130,10 @@ button.secondary:hover {
 }
 
 @media (max-width: 768px) {
+    .form-row {
+        flex-direction: column;
+    }
+
     .tag-row {
         grid-template-columns: 1fr;
     }
