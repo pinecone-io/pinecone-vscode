@@ -10,6 +10,7 @@ import { PineconeTreeItem } from '../providers/treeItems';
 import { buildProjectContextFromItem } from '../utils/treeItemHelpers';
 import { getErrorMessage } from '../utils/errorHandling';
 import { waitForIndexReadyForOperations } from '../utils/indexReadiness';
+import { Organization } from '../api/types';
 
 export class DataOpsCommands {
     constructor(
@@ -37,6 +38,7 @@ export class DataOpsCommands {
         }
 
         const hasIntegratedEmbeddings = !!item.metadata.index.embed;
+        const organization = item.metadata?.organization as Organization | undefined;
 
         const { DataOpsPanel } = await import('../webview/dataOpsPanel.js');
         DataOpsPanel.createOrShow(
@@ -45,7 +47,8 @@ export class DataOpsCommands {
             item.resourceId,
             item.metadata.index.host,
             hasIntegratedEmbeddings,
-            projectContext
+            projectContext,
+            organization?.plan
         );
     }
 }

@@ -83,6 +83,7 @@ suite('Commands Test Suite', () => {
         
         assert.ok(commands.includes('pinecone.refresh'), 'refresh command should be registered');
         assert.ok(commands.includes('pinecone.openDocs'), 'openDocs command should be registered');
+        assert.ok(commands.includes('pinecone.viewOrganizationDetails'), 'viewOrganizationDetails command should be registered');
     });
 });
 
@@ -187,6 +188,7 @@ suite('Menus Test Suite', () => {
             'pinecone.retrieveAssistantContext',
             'pinecone.evaluateAssistantAnswer',
             'pinecone.manageApiKeys',
+            'pinecone.viewOrganizationDetails',
             'pinecone.openInferenceToolbox',
             'pinecone.viewFileDetails'
         ];
@@ -336,5 +338,25 @@ suite('Menus Test Suite', () => {
         );
         assert.ok(backupsCategoryEntry, 'Backup/Restore Jobs should appear on backups-category context menu');
         assert.strictEqual(backupsCategoryEntry?.group, '2_view');
+    });
+
+    test('Organization context menu should include Create Project and Organization Details', () => {
+        const ext = vscode.extensions.getExtension('pinecone.pinecone-vscode');
+        assert.ok(ext);
+
+        const contextMenus = ext.packageJSON.contributes.menus['view/item/context'] as Array<{
+            command: string;
+            when: string;
+            group: string;
+        }>;
+        const forOrganization = contextMenus.filter((item) => item.when.includes('viewItem == organization'));
+
+        const createProject = forOrganization.find((item) => item.command === 'pinecone.createProject');
+        assert.ok(createProject, 'pinecone.createProject should appear in organization context menu');
+        assert.strictEqual(createProject?.group, '1_create');
+
+        const orgDetails = forOrganization.find((item) => item.command === 'pinecone.viewOrganizationDetails');
+        assert.ok(orgDetails, 'pinecone.viewOrganizationDetails should appear in organization context menu');
+        assert.strictEqual(orgDetails?.group, '2_info');
     });
 });

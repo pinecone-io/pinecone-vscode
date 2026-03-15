@@ -14,6 +14,7 @@ import * as vscode from 'vscode';
 import { PineconeService } from '../services/pineconeService';
 import { PineconeTreeItem } from '../providers/treeItems';
 import { AuthService } from '../services/authService';
+import { Organization } from '../api/types';
 import { AUTH_CONTEXTS } from '../utils/constants';
 import { getErrorMessage } from '../utils/errorHandling';
 import { refreshExplorer } from '../utils/refreshExplorer';
@@ -56,7 +57,8 @@ export class ProjectCommands {
      */
     constructor(
         private pineconeService: PineconeService,
-        private authService: AuthService
+        private authService: AuthService,
+        private extensionUri: vscode.Uri
     ) {}
 
     /**
@@ -285,6 +287,37 @@ export class ProjectCommands {
         } catch (e: unknown) {
             const message = getErrorMessage(e);
             vscode.window.showErrorMessage(`Failed to rename project: ${message}`);
+        }
+    }
+
+    /**
+     * Opens a read-only dialog with organization details.
+     *
+     * Displays billing-tier related fields such as plan and support tier
+     * from the organization model returned by the Admin API.
+     */
+    async viewOrganizationDetails(item: PineconeTreeItem): Promise<void> {
+        const organization = item.metadata?.organization as Organization | undefined;
+        const organizationId = organization?.id || item.resourceId;
+        const organizationName = organization?.name || item.label;
+
+        if (!organizationId) {
+            vscode.window.showErrorMessage('Unable to view organization details: organization ID not available');
+            return;
+        }
+
+        try {
+            const { OrganizationDetailsPanel } = await import('../webview/organizationDetailsPanel.js');
+            OrganizationDetailsPanel.createOrShow(
+                this.extensionUri,
+                this.pineconeService,
+                organizationId,
+                organizationName,
+                organization
+            );
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            vscode.window.showErrorMessage(`Failed to open organization details: ${message}`);
         }
     }
 }

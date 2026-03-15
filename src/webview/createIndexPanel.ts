@@ -9,6 +9,11 @@ import { refreshExplorer } from '../utils/refreshExplorer';
 import { getErrorMessage } from '../utils/errorHandling';
 import { ProjectContext } from '../api/client';
 import { parseReadCapacityPayload } from '../utils/readCapacity';
+import {
+    FREE_TIER_INDEX_CLOUD,
+    FREE_TIER_INDEX_REGION,
+    isFreeTierPlan
+} from '../utils/organizationPlan';
 
 interface CreateIndexMessage {
     command: 'ready' | 'submit';
@@ -26,13 +31,16 @@ export class CreateIndexPanel {
         extensionUri: vscode.Uri,
         pineconeService: PineconeService,
         treeDataProvider: PineconeTreeDataProvider,
-        projectContext?: ProjectContext
+        projectContext?: ProjectContext,
+        organizationPlan?: string
     ): void {
         const column = vscode.window.activeTextEditor?.viewColumn;
         const panelKey = CreateIndexPanel.getPanelKey(projectContext);
         const existing = CreateIndexPanel.panelsByKey.get(panelKey);
         if (existing) {
             existing.panel.reveal(column || vscode.ViewColumn.One);
+            existing.organizationPlan = organizationPlan;
+            void existing.sendInit();
             return;
         }
 
@@ -53,6 +61,7 @@ export class CreateIndexPanel {
             pineconeService,
             treeDataProvider,
             projectContext,
+            organizationPlan,
             panelKey
         );
     }
@@ -63,6 +72,7 @@ export class CreateIndexPanel {
         private readonly pineconeService: PineconeService,
         private readonly treeDataProvider: PineconeTreeDataProvider,
         private projectContext?: ProjectContext,
+        private organizationPlan?: string,
         panelKey?: string
     ) {
         this.panelKey = panelKey || CreateIndexPanel.getPanelKey(projectContext);
@@ -127,15 +137,20 @@ export class CreateIndexPanel {
     }
 
     private async sendInit(): Promise<void> {
+        const isFreeTier = isFreeTierPlan(this.organizationPlan);
         await this.panel.webview.postMessage({
             command: 'init',
             cloudRegions: CLOUD_REGIONS,
-            embeddingModels: EMBEDDING_MODELS
+            embeddingModels: EMBEDDING_MODELS,
+            isFreeTier,
+            freeTierCloud: FREE_TIER_INDEX_CLOUD,
+            freeTierRegion: FREE_TIER_INDEX_REGION
         });
     }
 
     private async handleSubmit(payload: Record<string, unknown>): Promise<void> {
         try {
+            const isFreeTier = isFreeTierPlan(this.organizationPlan);
             const name = String(payload.name || '').trim();
             if (!name) {
                 throw new Error('Index name is required.');
@@ -166,10 +181,10 @@ export class CreateIndexPanel {
                         throw new Error(readCapacityValidation.error);
                     }
                 }
-                await this.createIntegrated(name, integrated);
+                await this.createIntegrated(name, integrated, isFreeTier);
             } else {
                 const standard = (payload.standard || {}) as Record<string, unknown>;
-                await this.createStandard(name, standard);
+                await this.createStandard(name, standard, isFreeTier);
             }
 
             await this.panel.webview.postMessage({ command: 'success' });
@@ -182,14 +197,17 @@ export class CreateIndexPanel {
         }
     }
 
-    private async createStandard(name: string, payload: Record<string, unknown>): Promise<void> {
+    private async createStandard(name: string, payload: Record<string, unknown>, isFreeTier: boolean): Promise<void> {
         const vectorType = String(payload.vectorType || 'dense');
-        const cloud = String(payload.cloud || '');
-        const region = String(payload.region || '');
+        const cloud = String(payload.cloud || (isFreeTier ? FREE_TIER_INDEX_CLOUD : ''));
+        const region = String(payload.region || (isFreeTier ? FREE_TIER_INDEX_REGION : ''));
         if (!cloud || !region) {
             throw new Error('Cloud and region are required.');
         }
-        const readCapacity = parseReadCapacityPayload(payload.readCapacity, { allowDedicated: true });
+        if (isFreeTier && (cloud !== FREE_TIER_INDEX_CLOUD || region !== FREE_TIER_INDEX_REGION)) {
+            throw new Error('Free tier indexes must use cloud "aws" and region "us-east-1".');
+        }
+        const readCapacity = parseReadCapacityPayload(payload.readCapacity, { allowDedicated: !isFreeTier });
         if (readCapacity.error || !readCapacity.value) {
             throw new Error(readCapacity.error || 'Read capacity is invalid.');
         }
@@ -239,11 +257,11 @@ export class CreateIndexPanel {
         void refreshExplorer({ treeDataProvider: this.treeDataProvider });
     }
 
-    private async createIntegrated(name: string, payload: Record<string, unknown>): Promise<void> {
+    private async createIntegrated(name: string, payload: Record<string, unknown>, isFreeTier: boolean): Promise<void> {
         const modelName = String(payload.model || '').trim();
         const textField = String(payload.textField || '').trim();
-        const cloud = String(payload.cloud || '');
-        const region = String(payload.region || '');
+        const cloud = String(payload.cloud || (isFreeTier ? FREE_TIER_INDEX_CLOUD : ''));
+        const region = String(payload.region || (isFreeTier ? FREE_TIER_INDEX_REGION : ''));
 
         if (!modelName) {
             throw new Error('Embedding model is required.');
@@ -253,6 +271,9 @@ export class CreateIndexPanel {
         }
         if (!cloud || !region) {
             throw new Error('Cloud and region are required.');
+        }
+        if (isFreeTier && (cloud !== FREE_TIER_INDEX_CLOUD || region !== FREE_TIER_INDEX_REGION)) {
+            throw new Error('Free tier indexes must use cloud "aws" and region "us-east-1".');
         }
 
         const model = EMBEDDING_MODELS.find(entry => entry.name === modelName);

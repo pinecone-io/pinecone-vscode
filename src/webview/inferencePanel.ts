@@ -11,6 +11,7 @@ import { PineconeService } from '../services/pineconeService';
 import { ProjectContext } from '../api/client';
 import { classifyError } from '../utils/errorHandling';
 import { AUTH_CONTEXTS } from '../utils/constants';
+import { FREE_TIER_BLOCKED_RERANK_MODEL, isFreeTierPlan, normalizeOrganizationPlan } from '../utils/organizationPlan';
 
 interface InferenceMessage {
     command: string;
@@ -33,6 +34,7 @@ export class InferencePanel {
     private readonly panelKey: string;
     private isDisposed = false;
     private readonly modelsByName = new Map<string, InferenceModelInfo>();
+    private currentOrganizationPlan: string | undefined;
 
     private getProjectContext(): ProjectContext | undefined {
         const activeContext = this.pineconeService.getCurrentProjectContext();
@@ -63,6 +65,7 @@ export class InferencePanel {
             });
             return;
         }
+        await this.resolveCurrentOrganizationPlan(projectContext);
 
         const allModels = await inference.listModels(undefined, projectContext);
         this.modelsByName.clear();
@@ -73,7 +76,13 @@ export class InferencePanel {
             }
         });
         const embedModels = this.filterModelsByType(allModels, 'embed');
-        const rerankModels = this.filterModelsByType(allModels, 'rerank');
+        let rerankModels = this.filterModelsByType(allModels, 'rerank');
+        if (isFreeTierPlan(this.currentOrganizationPlan)) {
+            rerankModels = rerankModels.filter(model => {
+                const name = this.normalizeModelName(model);
+                return normalizeOrganizationPlan(name) !== normalizeOrganizationPlan(FREE_TIER_BLOCKED_RERANK_MODEL);
+            });
+        }
         await this.panel.webview.postMessage({
             command: 'models',
             embedModels: embedModels.map(model => this.normalizeModelName(model)).filter(Boolean).sort(),
@@ -197,6 +206,12 @@ export class InferencePanel {
                     const model = String(payload.model || '').trim();
                     if (!model) {
                         throw new Error('Select a rerank model.');
+                    }
+                    if (
+                        isFreeTierPlan(this.currentOrganizationPlan)
+                        && normalizeOrganizationPlan(model) === normalizeOrganizationPlan(FREE_TIER_BLOCKED_RERANK_MODEL)
+                    ) {
+                        throw new Error(`Model "${FREE_TIER_BLOCKED_RERANK_MODEL}" is not available on the Free plan.`);
                     }
                     const query = String(payload.query || '').trim();
                     if (!query) {
@@ -488,6 +503,21 @@ export class InferencePanel {
 
     private normalizeModelName(model: InferenceModelInfo): string {
         return String(model.model || model.name || model.id || '').trim();
+    }
+
+    private async resolveCurrentOrganizationPlan(projectContext?: ProjectContext): Promise<void> {
+        this.currentOrganizationPlan = undefined;
+        const organizationId = projectContext?.organizationId || this.pineconeService.getTargetOrganization()?.id;
+        if (!organizationId) {
+            return;
+        }
+
+        const organizationsResult = await this.pineconeService.listOrganizations();
+        if (!organizationsResult.success) {
+            return;
+        }
+        const organization = (organizationsResult.data || []).find(org => org.id === organizationId);
+        this.currentOrganizationPlan = organization?.plan;
     }
 
     private buildEmbedParameters(model: string, inputType: string): Record<string, unknown> | undefined {

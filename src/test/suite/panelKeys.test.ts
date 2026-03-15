@@ -8,6 +8,7 @@ import { CreateAssistantPanel } from '../../webview/createAssistantPanel';
 import { CreateIndexPanel } from '../../webview/createIndexPanel';
 import { DataOpsPanel } from '../../webview/dataOpsPanel';
 import { FileDetailsPanel } from '../../webview/fileDetailsPanel';
+import { OrganizationDetailsPanel } from '../../webview/organizationDetailsPanel';
 import { QueryPanel } from '../../webview/queryPanel';
 
 suite('Webview panel key scoping', () => {
@@ -142,5 +143,19 @@ suite('Webview panel key scoping', () => {
         assert.strictEqual(fromProjectItem, 'project-from-item');
         assert.strictEqual(fromTargetProject, 'target-project');
         assert.strictEqual(globalFallback, 'global');
+    });
+
+    test('organization details keys are organization scoped and case-insensitive', () => {
+        const panelClass = OrganizationDetailsPanel as unknown as {
+            getPanelKey: (organizationId: string, organizationName: string) => string;
+        };
+
+        const keyA = panelClass.getPanelKey('ORG-1', 'Org Name');
+        const keyB = panelClass.getPanelKey('org-1', 'Different Name');
+        const keyC = panelClass.getPanelKey('', 'Org Name');
+
+        assert.strictEqual(keyA, 'org-1');
+        assert.strictEqual(keyA, keyB);
+        assert.strictEqual(keyC, 'org name');
     });
 });

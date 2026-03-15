@@ -264,6 +264,12 @@
         "enablement": "pinecone.isAuthenticated"
       },
       {
+        "command": "pinecone.viewOrganizationDetails",
+        "title": "Organization Details",
+        "category": "Pinecone",
+        "enablement": "pinecone.isAuthenticated"
+      },
+      {
         "command": "pinecone.openInferenceToolbox",
         "title": "Open Inference Toolbox",
         "category": "Pinecone",
@@ -416,6 +422,11 @@
           "group": "1_create"
         },
         {
+          "command": "pinecone.viewOrganizationDetails",
+          "when": "view == pineconeExplorer && viewItem == organization",
+          "group": "2_info"
+        },
+        {
           "command": "pinecone.deleteProject",
           "when": "view == pineconeExplorer && viewItem == project",
           "group": "2_delete"
@@ -557,6 +568,10 @@
         },
         {
           "command": "pinecone.manageApiKeys",
+          "when": "false"
+        },
+        {
+          "command": "pinecone.viewOrganizationDetails",
           "when": "false"
         },
         {

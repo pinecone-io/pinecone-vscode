@@ -70,7 +70,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const assistantCommands = new AssistantCommands(pineconeService, context.extensionUri, treeDataProvider);
     const fileCommands = new FileCommands(pineconeService, treeDataProvider, context.extensionUri);
     const namespaceCommands = new NamespaceCommands(pineconeService);
-    const projectCommands = new ProjectCommands(pineconeService, authService);
+    const projectCommands = new ProjectCommands(pineconeService, authService, context.extensionUri);
     const dataOpsCommands = new DataOpsCommands(pineconeService, context.extensionUri);
     const assistantToolsCommands = new AssistantToolsCommands(pineconeService, context.extensionUri);
     const apiKeysCommands = new ApiKeysCommands(pineconeService, authService, context.extensionUri);
@@ -158,6 +158,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('pinecone.createProject', (item) => projectCommands.createProject(item)),
         vscode.commands.registerCommand('pinecone.deleteProject', (item) => projectCommands.deleteProject(item)),
         vscode.commands.registerCommand('pinecone.renameProject', (item) => projectCommands.renameProject(item)),
+        vscode.commands.registerCommand('pinecone.viewOrganizationDetails', (item) => projectCommands.viewOrganizationDetails(item)),
 
         // Admin + Inference commands
         vscode.commands.registerCommand('pinecone.manageApiKeys', (item) => apiKeysCommands.openApiKeys(item)),

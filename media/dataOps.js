@@ -6,11 +6,13 @@
     const upsertVectorSection = document.getElementById('upsert-vector-section');
     const upsertRecordsSection = document.getElementById('upsert-records-section');
     const upsertModeHint = document.getElementById('upsert-mode-hint');
+    const importsSection = document.getElementById('imports-section');
     const activeImportsList = document.getElementById('active-imports-list');
     const activeImportsEmpty = document.getElementById('active-imports-empty');
     const cancelImportBtn = document.getElementById('cancel-import-btn');
     let activeImports = [];
     let selectedActiveImportId = '';
+    let importsDisabled = false;
 
     const actionResultIds = {
         upsertVectors: 'result-upsertVectors',
@@ -474,6 +476,10 @@
             if (!action) {
                 return;
             }
+            if (importsDisabled && (action === 'startImport' || action === 'refreshActiveImports' || action === 'cancelImport')) {
+                showError('Imports are not available on the Free plan.');
+                return;
+            }
             clearSectionResult(action);
             vscode.postMessage({
                 command: action,
@@ -488,6 +494,10 @@
             case 'setIndex':
                 indexNameSpan.textContent = message.indexName;
                 setUpsertMode(!!message.hasIntegratedEmbeddings);
+                importsDisabled = !!message.importsDisabled;
+                if (importsSection) {
+                    importsSection.classList.toggle('hidden', importsDisabled);
+                }
                 break;
             case 'activeImports':
                 renderActiveImports(message.imports || []);

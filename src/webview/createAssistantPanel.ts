@@ -8,6 +8,7 @@ import { Metadata } from '../api/types';
 import { getErrorMessage } from '../utils/errorHandling';
 import { parseOptionalJsonObject } from '../utils/inputValidation';
 import { refreshExplorer } from '../utils/refreshExplorer';
+import { FREE_TIER_ASSISTANT_REGION, isFreeTierPlan } from '../utils/organizationPlan';
 
 interface CreateAssistantMessage {
     command: 'ready' | 'submit';
@@ -30,13 +31,16 @@ export class CreateAssistantPanel {
         extensionUri: vscode.Uri,
         pineconeService: PineconeService,
         treeDataProvider: PineconeTreeDataProvider | undefined,
-        projectContext?: ProjectContext
+        projectContext?: ProjectContext,
+        organizationPlan?: string
     ): void {
         const column = vscode.window.activeTextEditor?.viewColumn;
         const panelKey = CreateAssistantPanel.getPanelKey(projectContext);
         const existing = CreateAssistantPanel.panelsByKey.get(panelKey);
         if (existing) {
             existing.panel.reveal(column || vscode.ViewColumn.One);
+            existing.organizationPlan = organizationPlan;
+            void existing.sendInit();
             return;
         }
 
@@ -57,6 +61,7 @@ export class CreateAssistantPanel {
             pineconeService,
             treeDataProvider,
             projectContext,
+            organizationPlan,
             panelKey
         );
     }
@@ -67,6 +72,7 @@ export class CreateAssistantPanel {
         private readonly pineconeService: PineconeService,
         private readonly treeDataProvider: PineconeTreeDataProvider | undefined,
         private projectContext?: ProjectContext,
+        private organizationPlan?: string,
         panelKey?: string
     ) {
         this.panelKey = panelKey || CreateAssistantPanel.getPanelKey(projectContext);
@@ -131,11 +137,16 @@ export class CreateAssistantPanel {
     }
 
     private async sendInit(): Promise<void> {
+        const isFreeTier = isFreeTierPlan(this.organizationPlan);
         const config = vscode.workspace.getConfiguration('pinecone');
         const defaultRegion = config.get<string>('defaultRegion', 'us');
         await this.panel.webview.postMessage({
             command: 'init',
-            defaultRegion: defaultRegion === 'eu' ? 'eu' : 'us'
+            defaultRegion: isFreeTier
+                ? FREE_TIER_ASSISTANT_REGION
+                : (defaultRegion === 'eu' ? 'eu' : 'us'),
+            isFreeTier,
+            freeTierRegion: FREE_TIER_ASSISTANT_REGION
         });
     }
 
@@ -152,6 +163,7 @@ export class CreateAssistantPanel {
 
     private async handleSubmit(payload?: CreateAssistantMessage['payload']): Promise<void> {
         try {
+            const isFreeTier = isFreeTierPlan(this.organizationPlan);
             const name = String(payload?.name || '').trim();
             if (!name) {
                 throw new Error('Name is required.');
@@ -166,6 +178,9 @@ export class CreateAssistantPanel {
             const region = String(payload?.region || 'us').trim();
             if (!['us', 'eu'].includes(region)) {
                 throw new Error('Region must be "us" or "eu".');
+            }
+            if (isFreeTier && region !== FREE_TIER_ASSISTANT_REGION) {
+                throw new Error(`Free tier assistants must use region "${FREE_TIER_ASSISTANT_REGION}".`);
             }
 
             const metadataResult = parseOptionalJsonObject(

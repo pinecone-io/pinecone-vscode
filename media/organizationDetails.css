@@ -1,0 +1,105 @@
+body {
+    padding: 20px;
+    color: var(--vscode-editor-foreground);
+    background-color: var(--vscode-editor-background);
+    font-family: var(--vscode-font-family);
+}
+
+.container {
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.header h2 {
+    margin: 0;
+}
+
+button {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    padding: 8px 12px;
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+button.secondary {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+button.secondary:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.error {
+    color: var(--vscode-errorForeground);
+    background-color: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    padding: 10px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+}
+
+.results-section {
+    border: 1px solid var(--vscode-editorGroup-border);
+    border-radius: 6px;
+    padding: 12px;
+    background-color: var(--vscode-editor-background);
+    margin-bottom: 12px;
+}
+
+.results-section h3 {
+    margin: 0 0 10px;
+}
+
+.match-item {
+    background-color: var(--vscode-editor-inactiveSelectionBackground);
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.metadata-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+.metadata-table tr {
+    border-bottom: 1px solid var(--vscode-editorGroup-border);
+}
+
+.metadata-table tr:last-child {
+    border-bottom: none;
+}
+
+.metadata-key {
+    padding: 6px 10px 6px 0;
+    font-weight: 600;
+    color: var(--vscode-symbolIcon-fieldForeground);
+    vertical-align: top;
+    white-space: nowrap;
+    width: 1%;
+}
+
+.metadata-value {
+    padding: 6px 0;
+    word-break: break-word;
+}
+
+.hidden {
+    display: none;
+}
