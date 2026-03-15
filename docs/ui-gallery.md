@@ -56,6 +56,16 @@ This page shows key Pinecone VS Code extension workflows.
 
 ![Update assistant dialog](images/extension-ui/assistant-update-dialog.png)
 
+## Inference workflows
+
+### Inference Toolbox overview
+
+![Inference Toolbox overview](images/extension-ui/inference-toolbox-overview.png)
+
+### Inference Toolbox embeddings result
+
+![Inference Toolbox embeddings result](images/extension-ui/inference-toolbox-embeddings-results.png)
+
 ## Project/API workflows
 
 ### Project API key management panel
