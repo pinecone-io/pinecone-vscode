@@ -545,7 +545,7 @@ export class AuthService {
                             this.saveOAuthToken(refreshed);
                             return refreshed;
                         });
-                    } catch (error: unknown) {
+                    } catch (_error: unknown) {
                         await this.handleAuthFailure('Token expired. Please log in again.');
                         throw new Error('Token expired and refresh failed');
                     }

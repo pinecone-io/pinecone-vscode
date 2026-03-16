@@ -251,12 +251,27 @@ button:disabled {
 }
 
 .text-action-btn {
+    display: inline-block;
     width: auto;
     padding: 0 7px;
     margin: 0;
     font-size: 0.8em;
     line-height: 1.2;
     min-height: 20px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.expand-btn,
+.copy-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.expand-btn:hover,
+.copy-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
 .code-block {

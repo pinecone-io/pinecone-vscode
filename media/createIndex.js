@@ -9,6 +9,7 @@
     const standardMetricGroup = document.getElementById('standard-metric-group');
     const standardReadCapacityMode = document.getElementById('standard-read-capacity-mode');
     const standardDedicatedReadCapacity = document.getElementById('standard-dedicated-read-capacity');
+    const standardReadCapacityHint = document.getElementById('standard-read-capacity-hint');
     const integratedModelSelect = document.getElementById('integrated-model');
     const integratedDimensionSelect = document.getElementById('integrated-dimension');
     const integratedDimensionGroup = document.getElementById('integrated-dimension-group');
@@ -17,6 +18,9 @@
 
     let cloudRegions = {};
     let embeddingModels = [];
+    let isFreeTier = false;
+    let freeTierCloud = 'aws';
+    let freeTierRegion = 'us-east-1';
 
     function showError(message) {
         errorDiv.textContent = message || 'Unknown error';
@@ -66,6 +70,12 @@
     function setRegionOptions(cloudSelectId, regionSelectId) {
         const cloud = value(cloudSelectId);
         const regionSelect = document.getElementById(regionSelectId);
+        if (isFreeTier) {
+            regionSelect.innerHTML = '';
+            regionSelect.appendChild(new Option(freeTierRegion, freeTierRegion));
+            regionSelect.value = freeTierRegion;
+            return;
+        }
         const regions = Array.isArray(cloudRegions[cloud]) ? cloudRegions[cloud] : [];
         regionSelect.innerHTML = '';
         regions.forEach(region => {
@@ -75,16 +85,48 @@
     }
 
     function populateCloudSelectors() {
-        const clouds = Object.keys(cloudRegions);
+        const clouds = isFreeTier ? [freeTierCloud] : Object.keys(cloudRegions);
         ['standard-cloud', 'integrated-cloud'].forEach(id => {
             const select = document.getElementById(id);
             select.innerHTML = '';
             clouds.forEach(cloud => {
                 select.appendChild(new Option(cloud, cloud));
             });
+            if (isFreeTier) {
+                select.value = freeTierCloud;
+                select.disabled = true;
+            } else {
+                select.disabled = false;
+            }
         });
         setRegionOptions('standard-cloud', 'standard-region');
         setRegionOptions('integrated-cloud', 'integrated-region');
+        ['standard-region', 'integrated-region'].forEach(id => {
+            const select = document.getElementById(id);
+            if (select) {
+                select.disabled = isFreeTier;
+            }
+        });
+    }
+
+    function applyFreeTierRestrictions() {
+        const dedicatedOption = standardReadCapacityMode.querySelector('option[value="Dedicated"]');
+        if (dedicatedOption) {
+            dedicatedOption.disabled = isFreeTier;
+        }
+        if (isFreeTier) {
+            standardReadCapacityMode.value = 'OnDemand';
+            standardReadCapacityMode.disabled = true;
+            if (standardReadCapacityHint) {
+                standardReadCapacityHint.textContent = 'Dedicated Read Nodes are not available on the Free plan.';
+            }
+        } else {
+            standardReadCapacityMode.disabled = false;
+            if (standardReadCapacityHint) {
+                standardReadCapacityHint.textContent = 'Dedicated Read Nodes are only supported for Bring Your Own Vectors indexes in this extension.';
+            }
+        }
+        setStandardReadCapacityMode();
     }
 
     function refreshIntegratedModelOptions() {
@@ -186,11 +228,14 @@
             case 'init':
                 cloudRegions = message.cloudRegions || {};
                 embeddingModels = message.embeddingModels || [];
+                isFreeTier = !!message.isFreeTier;
+                freeTierCloud = message.freeTierCloud || 'aws';
+                freeTierRegion = message.freeTierRegion || 'us-east-1';
                 populateCloudSelectors();
                 refreshIntegratedModelOptions();
+                applyFreeTierRestrictions();
                 setMode();
                 setStandardVectorType();
-                setStandardReadCapacityMode();
                 createBtn.disabled = false;
                 break;
             case 'error':

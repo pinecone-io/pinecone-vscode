@@ -36,7 +36,7 @@ function parseVectorInput(vectorStr: string): { vector?: number[]; error?: strin
             return { error: 'Vector must be an array of numbers' };
         }
         return { vector };
-    } catch (e) {
+    } catch (_e) {
         return { error: 'Invalid vector format. Must be a JSON array of numbers (e.g., [0.1, 0.2, 0.3]).' };
     }
 }
@@ -53,7 +53,7 @@ function parseFilterInput(filterStr: string): { filter?: Record<string, unknown>
     try {
         const filter = JSON.parse(filterStr);
         return { filter };
-    } catch (e) {
+    } catch (_e) {
         return { error: 'Invalid filter JSON. Please check the syntax.' };
     }
 }

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource}; script-src 'nonce-${nonce}';">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${stylesUri}" rel="stylesheet">
+    <title>Organization Details</title>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Organization Details: <span id="organization-name">${organizationName}</span></h2>
+            <button id="refresh-btn" class="secondary">Refresh</button>
+        </div>
+
+        <div id="error" class="error hidden"></div>
+
+        <section class="results-section">
+            <h3>Details</h3>
+            <div id="details-card" class="match-item hidden">
+                <table id="details-table" class="metadata-table"></table>
+            </div>
+        </section>
+    </div>
+    <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>

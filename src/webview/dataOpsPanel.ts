@@ -13,10 +13,13 @@ import { ImportJob, Metadata } from '../api/types';
 import { classifyError } from '../utils/errorHandling';
 import { parseOptionalJsonObject, parseOptionalNumberArray } from '../utils/inputValidation';
 import { collectPaginatedData, getActiveImports } from '../utils/jobStatus';
+import { isFreeTierPlan } from '../utils/organizationPlan';
 
 interface DataOpsMessage {
     command: string;
     payload?: Record<string, unknown>;
+    text?: string;
+    copyId?: string;
 }
 
 export class DataOpsPanel {
@@ -33,14 +36,15 @@ export class DataOpsPanel {
         indexName: string,
         indexHost: string,
         hasIntegratedEmbeddings: boolean,
-        projectContext?: ProjectContext
+        projectContext?: ProjectContext,
+        organizationPlan?: string
     ): void {
         const column = vscode.window.activeTextEditor?.viewColumn;
         const panelKey = DataOpsPanel.getPanelKey(indexHost, projectContext);
         const existing = DataOpsPanel.panelsByKey.get(panelKey);
         if (existing) {
             existing.panel.reveal(column || vscode.ViewColumn.One);
-            existing.setIndex(indexName, indexHost, hasIntegratedEmbeddings, projectContext);
+            existing.setIndex(indexName, indexHost, hasIntegratedEmbeddings, projectContext, organizationPlan);
             return;
         }
 
@@ -63,6 +67,7 @@ export class DataOpsPanel {
             indexHost,
             hasIntegratedEmbeddings,
             projectContext,
+            organizationPlan,
             panelKey
         );
     }
@@ -75,6 +80,7 @@ export class DataOpsPanel {
         private indexHost: string,
         private hasIntegratedEmbeddings: boolean,
         private projectContext?: ProjectContext,
+        private organizationPlan?: string,
         panelKey?: string
     ) {
         this.panel = panel;
@@ -92,19 +98,29 @@ export class DataOpsPanel {
         indexName: string,
         indexHost: string,
         hasIntegratedEmbeddings: boolean,
-        projectContext?: ProjectContext
+        projectContext?: ProjectContext,
+        organizationPlan?: string
     ): void {
         this.indexName = indexName;
         this.indexHost = indexHost;
         this.hasIntegratedEmbeddings = hasIntegratedEmbeddings;
         this.projectContext = projectContext;
+        this.organizationPlan = organizationPlan;
         this.panel.title = `Data Ops: ${indexName}`;
         void this.panel.webview.postMessage({
             command: 'setIndex',
             indexName,
-            hasIntegratedEmbeddings
+            hasIntegratedEmbeddings,
+            importsDisabled: this.isImportsDisabled()
         });
-        void this.sendActiveImports();
+        if (this.isImportsDisabled()) {
+            void this.panel.webview.postMessage({
+                command: 'activeImports',
+                imports: []
+            });
+        } else {
+            void this.sendActiveImports();
+        }
     }
 
     private dispose(): void {
@@ -159,9 +175,20 @@ export class DataOpsPanel {
                     await this.panel.webview.postMessage({
                         command: 'setIndex',
                         indexName: this.indexName,
-                        hasIntegratedEmbeddings: this.hasIntegratedEmbeddings
+                        hasIntegratedEmbeddings: this.hasIntegratedEmbeddings,
+                        importsDisabled: this.isImportsDisabled()
                     });
-                    await this.sendActiveImports();
+                    if (this.isImportsDisabled()) {
+                        await this.panel.webview.postMessage({
+                            command: 'activeImports',
+                            imports: []
+                        });
+                    } else {
+                        await this.sendActiveImports();
+                    }
+                    return;
+                case 'copyToClipboard':
+                    await this.copyTextToClipboard(message.text, message.copyId);
                     return;
                 case 'upsertVectors': {
                     if (this.hasIntegratedEmbeddings) {
@@ -349,6 +376,9 @@ export class DataOpsPanel {
                     return;
                 }
                 case 'startImport': {
+                    if (this.isImportsDisabled()) {
+                        throw new Error('Imports are not available on the Free plan.');
+                    }
                     const response = await dataPlane.startImport(
                         this.indexHost,
                         {
@@ -365,10 +395,16 @@ export class DataOpsPanel {
                     return;
                 }
                 case 'refreshActiveImports': {
+                    if (this.isImportsDisabled()) {
+                        throw new Error('Imports are not available on the Free plan.');
+                    }
                     await this.sendActiveImports();
                     return;
                 }
                 case 'cancelImport': {
+                    if (this.isImportsDisabled()) {
+                        throw new Error('Imports are not available on the Free plan.');
+                    }
                     const importId = String(payload.importId || '').trim();
                     if (!importId) {
                         throw new Error('Select an active import job to cancel.');
@@ -411,6 +447,22 @@ export class DataOpsPanel {
         });
     }
 
+    private async copyTextToClipboard(text: string | undefined, copyId: string | undefined): Promise<void> {
+        if (!copyId) {
+            return;
+        }
+        try {
+            await vscode.env.clipboard.writeText(String(text || ''));
+            await this.panel.webview.postMessage({ command: 'copied', copyId });
+        } catch {
+            await this.panel.webview.postMessage({
+                command: 'copyError',
+                copyId,
+                message: 'Failed to copy text to clipboard.'
+            });
+        }
+    }
+
     private async sendActiveImports(): Promise<void> {
         try {
             const dataPlane = this.pineconeService.getDataPlane();
@@ -438,5 +490,9 @@ export class DataOpsPanel {
             }
             throw error;
         }
+    }
+
+    private isImportsDisabled(): boolean {
+        return isFreeTierPlan(this.organizationPlan);
     }
 }

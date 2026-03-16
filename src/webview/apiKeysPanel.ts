@@ -12,6 +12,7 @@ import { AuthService } from '../services/authService';
 import { AUTH_CONTEXTS } from '../utils/constants';
 import { getErrorMessage } from '../utils/errorHandling';
 import { PineconeTreeItem } from '../providers/treeItems';
+import { FREE_TIER_API_KEY_ROLE, isFreeTierPlan } from '../utils/organizationPlan';
 
 interface ApiKeyPanelMessage {
     command: 'ready' | 'createKey' | 'revokeKey';
@@ -57,6 +58,7 @@ export class ApiKeysPanel {
     private projectId: string | undefined;
     private projectName: string | undefined;
     private projectOrganizationId: string | undefined;
+    private organizationPlan: string | undefined;
     private listRequestCounter = 0;
 
     private constructor(
@@ -84,18 +86,21 @@ export class ApiKeysPanel {
             this.projectId = item.resourceId;
             this.projectName = item.label;
             const project = item.metadata?.project as { organization_id?: string } | undefined;
-            const organization = item.metadata?.organization as { id?: string } | undefined;
+            const organization = item.metadata?.organization as { id?: string; plan?: string } | undefined;
             this.projectOrganizationId = organization?.id || project?.organization_id || item.parentId;
+            this.organizationPlan = organization?.plan;
         } else {
             const targetProject = this.pineconeService.getTargetProject();
             const targetOrganization = this.pineconeService.getTargetOrganization();
             this.projectId = targetProject?.id;
             this.projectName = targetProject?.name;
             this.projectOrganizationId = targetOrganization?.id;
+            this.organizationPlan = undefined;
         }
         const name = this.projectName || 'Unknown Project';
         this.panel.title = `API Keys: ${name}`;
         void this.panel.webview.postMessage({ command: 'setProject', projectName: name });
+        void this.postRolePolicy();
         if (refreshKeys) {
             void this.listKeysWithErrorHandling();
         }
@@ -104,6 +109,7 @@ export class ApiKeysPanel {
     private async listKeysWithErrorHandling(): Promise<void> {
         const requestId = ++this.listRequestCounter;
         try {
+            await this.resolveOrganizationPlan();
             await this.listKeys(requestId);
         } catch (error: unknown) {
             if (requestId !== this.listRequestCounter) {
@@ -127,6 +133,30 @@ export class ApiKeysPanel {
         if (!switched) {
             throw new Error(`Could not switch authentication scope to organization "${this.projectOrganizationId}".`);
         }
+    }
+
+    private async resolveOrganizationPlan(): Promise<void> {
+        if (this.organizationPlan || !this.projectOrganizationId) {
+            await this.postRolePolicy();
+            return;
+        }
+
+        const organizationsResult = await this.pineconeService.listOrganizations();
+        if (organizationsResult.success) {
+            const organizations = organizationsResult.data || [];
+            const organization = organizations.find((org) => org.id === this.projectOrganizationId);
+            this.organizationPlan = organization?.plan;
+        }
+
+        await this.postRolePolicy();
+    }
+
+    private async postRolePolicy(): Promise<void> {
+        await this.panel.webview.postMessage({
+            command: 'rolePolicy',
+            enforceProjectEditorOnly: isFreeTierPlan(this.organizationPlan),
+            role: FREE_TIER_API_KEY_ROLE
+        });
     }
 
     private dispose(): void {
@@ -207,7 +237,7 @@ export class ApiKeysPanel {
         try {
             switch (message.command) {
                 case 'ready':
-                    await this.listKeys();
+                    await this.listKeysWithErrorHandling();
                     return;
                 case 'createKey': {
                     if (!this.projectId) {
@@ -215,7 +245,7 @@ export class ApiKeysPanel {
                     }
                     const name = String(message.payload?.name || '').trim();
                     const rawRoles = message.payload?.roles;
-                    const roles = Array.isArray(rawRoles)
+                    const rolesFromPayload = Array.isArray(rawRoles)
                         ? rawRoles
                             .map(role => String(role).trim())
                             .filter(Boolean)
@@ -223,6 +253,9 @@ export class ApiKeysPanel {
                             .split(',')
                             .map(v => v.trim())
                             .filter(Boolean);
+                    const roles = isFreeTierPlan(this.organizationPlan)
+                        ? [FREE_TIER_API_KEY_ROLE]
+                        : rolesFromPayload;
                     if (!name) {
                         throw new Error('Key name is required.');
                     }

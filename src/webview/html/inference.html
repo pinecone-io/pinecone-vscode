@@ -29,7 +29,14 @@
                     <option value="passage">passage</option>
                 </select>
             </div>
-            <textarea id="embed-inputs" rows="4" placeholder="One input per line, or JSON array"></textarea>
+            <div class="form-group">
+                <label>Documents</label>
+                <div id="embed-documents-list" class="rerank-documents-list"></div>
+                <div class="document-actions">
+                    <button id="add-embed-document" type="button" class="secondary-action">Add Document</button>
+                    <button id="clear-embed-documents" type="button" class="secondary-action">Clear All Documents</button>
+                </div>
+            </div>
             <button data-action="embed">Generate Embeddings</button>
             <div id="embed-result-section" class="section-result hidden">
                 <div class="results-header">

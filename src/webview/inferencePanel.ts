@@ -11,10 +11,13 @@ import { PineconeService } from '../services/pineconeService';
 import { ProjectContext } from '../api/client';
 import { classifyError } from '../utils/errorHandling';
 import { AUTH_CONTEXTS } from '../utils/constants';
+import { FREE_TIER_BLOCKED_RERANK_MODEL, isFreeTierPlan, normalizeOrganizationPlan } from '../utils/organizationPlan';
 
 interface InferenceMessage {
     command: string;
     payload?: Record<string, unknown>;
+    text?: string;
+    copyId?: string;
 }
 
 interface InferenceModelInfo {
@@ -33,6 +36,7 @@ export class InferencePanel {
     private readonly panelKey: string;
     private isDisposed = false;
     private readonly modelsByName = new Map<string, InferenceModelInfo>();
+    private currentOrganizationPlan: string | undefined;
 
     private getProjectContext(): ProjectContext | undefined {
         const activeContext = this.pineconeService.getCurrentProjectContext();
@@ -63,6 +67,7 @@ export class InferencePanel {
             });
             return;
         }
+        await this.resolveCurrentOrganizationPlan(projectContext);
 
         const allModels = await inference.listModels(undefined, projectContext);
         this.modelsByName.clear();
@@ -73,7 +78,13 @@ export class InferencePanel {
             }
         });
         const embedModels = this.filterModelsByType(allModels, 'embed');
-        const rerankModels = this.filterModelsByType(allModels, 'rerank');
+        let rerankModels = this.filterModelsByType(allModels, 'rerank');
+        if (isFreeTierPlan(this.currentOrganizationPlan)) {
+            rerankModels = rerankModels.filter(model => {
+                const name = this.normalizeModelName(model);
+                return normalizeOrganizationPlan(name) !== normalizeOrganizationPlan(FREE_TIER_BLOCKED_RERANK_MODEL);
+            });
+        }
         await this.panel.webview.postMessage({
             command: 'models',
             embedModels: embedModels.map(model => this.normalizeModelName(model)).filter(Boolean).sort(),
@@ -174,12 +185,17 @@ export class InferencePanel {
                 case 'ready':
                     await this.reloadModels();
                     return;
+                case 'copyToClipboard':
+                    await this.copyTextToClipboard(message.text, message.copyId);
+                    return;
                 case 'embed': {
                     const model = String(payload.model || '').trim();
                     if (!model) {
                         throw new Error('Select an embedding model.');
                     }
-                    const inputs = this.parseEmbedInputs(String(payload.inputs || ''));
+                    const inputs = this.parseEmbedInputs(
+                        payload.documents !== undefined ? payload.documents : payload.inputs
+                    );
                     const inputTexts = inputs.map(input => this.extractEmbedInputText(input));
                     const embedParameters = this.buildEmbedParameters(
                         model,
@@ -197,6 +213,12 @@ export class InferencePanel {
                     const model = String(payload.model || '').trim();
                     if (!model) {
                         throw new Error('Select a rerank model.');
+                    }
+                    if (
+                        isFreeTierPlan(this.currentOrganizationPlan)
+                        && normalizeOrganizationPlan(model) === normalizeOrganizationPlan(FREE_TIER_BLOCKED_RERANK_MODEL)
+                    ) {
+                        throw new Error(`Model "${FREE_TIER_BLOCKED_RERANK_MODEL}" is not available on the Free plan.`);
                     }
                     const query = String(payload.query || '').trim();
                     if (!query) {
@@ -251,6 +273,22 @@ export class InferencePanel {
         await this.panel.webview.postMessage({ command: 'result', action, result, meta });
     }
 
+    private async copyTextToClipboard(text: string | undefined, copyId: string | undefined): Promise<void> {
+        if (!copyId) {
+            return;
+        }
+        try {
+            await vscode.env.clipboard.writeText(String(text || ''));
+            await this.panel.webview.postMessage({ command: 'copied', copyId });
+        } catch {
+            await this.panel.webview.postMessage({
+                command: 'copyError',
+                copyId,
+                message: 'Failed to copy text to clipboard.'
+            });
+        }
+    }
+
     private async reloadModels(): Promise<void> {
         try {
             await this.loadModelOptions();
@@ -286,17 +324,35 @@ export class InferencePanel {
         return byName.length > 0 ? byName : models;
     }
 
-    private parseEmbedInputs(rawInputs: string): Array<Record<string, unknown>> {
-        const trimmed = rawInputs.trim();
+    private parseEmbedInputs(rawInputs: unknown): Array<Record<string, unknown>> {
+        if (Array.isArray(rawInputs)) {
+            const normalized = this.normalizeInputObjects(
+                rawInputs,
+                'Embed documents must be strings or objects.'
+            );
+            if (!normalized.length) {
+                throw new Error('At least one embed document is required.');
+            }
+            return normalized;
+        }
+
+        const trimmed = String(rawInputs || '').trim();
         if (!trimmed) {
-            throw new Error('Embed inputs are required.');
+            throw new Error('At least one embed document is required.');
         }
 
         if (trimmed.startsWith('[')) {
             try {
                 const parsed = JSON.parse(trimmed);
                 if (Array.isArray(parsed)) {
-                    return this.normalizeInputObjects(parsed, 'Embed inputs array entries must be strings or objects.');
+                    const normalized = this.normalizeInputObjects(
+                        parsed,
+                        'Embed inputs array entries must be strings or objects.'
+                    );
+                    if (!normalized.length) {
+                        throw new Error('At least one embed document is required.');
+                    }
+                    return normalized;
                 }
             } catch {
                 throw new Error('Embed inputs JSON must be a valid array of strings or objects.');
@@ -305,7 +361,7 @@ export class InferencePanel {
 
         const lines = trimmed.split('\n').map(v => v.trim()).filter(Boolean);
         if (!lines.length) {
-            throw new Error('Embed inputs are required.');
+            throw new Error('At least one embed document is required.');
         }
         return lines.map(text => ({ text }));
     }
@@ -488,6 +544,21 @@ export class InferencePanel {
 
     private normalizeModelName(model: InferenceModelInfo): string {
         return String(model.model || model.name || model.id || '').trim();
+    }
+
+    private async resolveCurrentOrganizationPlan(projectContext?: ProjectContext): Promise<void> {
+        this.currentOrganizationPlan = undefined;
+        const organizationId = projectContext?.organizationId || this.pineconeService.getTargetOrganization()?.id;
+        if (!organizationId) {
+            return;
+        }
+
+        const organizationsResult = await this.pineconeService.listOrganizations();
+        if (!organizationsResult.success) {
+            return;
+        }
+        const organization = (organizationsResult.data || []).find(org => org.id === organizationId);
+        this.currentOrganizationPlan = organization?.plan;
     }
 
     private buildEmbedParameters(model: string, inputType: string): Record<string, unknown> | undefined {

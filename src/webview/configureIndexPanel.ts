@@ -8,6 +8,7 @@ import { ServerlessSpec } from '../api/types';
 import { getErrorMessage } from '../utils/errorHandling';
 import { refreshExplorer } from '../utils/refreshExplorer';
 import { normalizeServerlessReadCapacity, parseReadCapacityPayload } from '../utils/readCapacity';
+import { isFreeTierPlan } from '../utils/organizationPlan';
 
 interface ConfigureIndexMessage {
     command: 'ready' | 'submit';
@@ -38,13 +39,16 @@ export class ConfigureIndexPanel {
         pineconeService: PineconeService,
         treeDataProvider: PineconeTreeDataProvider,
         indexName: string,
-        projectContext?: ProjectContext
+        projectContext?: ProjectContext,
+        organizationPlan?: string
     ): void {
         const column = vscode.window.activeTextEditor?.viewColumn;
         const panelKey = ConfigureIndexPanel.getPanelKey(indexName, projectContext);
         const existing = ConfigureIndexPanel.panelsByKey.get(panelKey);
         if (existing) {
             existing.panel.reveal(column || vscode.ViewColumn.One);
+            existing.organizationPlan = organizationPlan;
+            void existing.sendCurrentConfig();
             return;
         }
 
@@ -66,6 +70,7 @@ export class ConfigureIndexPanel {
             treeDataProvider,
             indexName,
             projectContext,
+            organizationPlan,
             panelKey
         );
     }
@@ -77,6 +82,7 @@ export class ConfigureIndexPanel {
         private readonly treeDataProvider: PineconeTreeDataProvider,
         private indexName: string,
         private projectContext?: ProjectContext,
+        private organizationPlan?: string,
         panelKey?: string
     ) {
         this.panelKey = panelKey || ConfigureIndexPanel.getPanelKey(indexName, projectContext);
@@ -156,6 +162,7 @@ export class ConfigureIndexPanel {
 
     private async sendCurrentConfig(): Promise<void> {
         try {
+            const isFreeTier = isFreeTierPlan(this.organizationPlan);
             this.applyProjectContext();
             const index = await this.pineconeService.describeIndex(this.indexName);
             this.originalTags = { ...(index.tags || {}) };
@@ -170,6 +177,7 @@ export class ConfigureIndexPanel {
                 deletionProtection: index.deletion_protection || 'disabled',
                 tags: this.originalTags,
                 hasIntegratedEmbeddings: this.hasIntegratedEmbeddings,
+                isFreeTier,
                 canSwitchToOnDemand: currentReadCapacity.mode !== 'Dedicated',
                 readCapacity: {
                     mode: currentReadCapacity.mode,
@@ -188,6 +196,7 @@ export class ConfigureIndexPanel {
 
     private async handleSubmit(payload?: ConfigureIndexMessage['payload']): Promise<void> {
         try {
+            const isFreeTier = isFreeTierPlan(this.organizationPlan);
             const deletionProtection = String(payload?.deletionProtection || 'disabled');
             if (!['enabled', 'disabled'].includes(deletionProtection)) {
                 throw new Error('Deletion protection must be enabled or disabled.');
@@ -216,13 +225,13 @@ export class ConfigureIndexPanel {
                 }
             }
             const readCapacity = parseReadCapacityPayload(payload?.readCapacity, {
-                allowDedicated: !this.hasIntegratedEmbeddings
+                allowDedicated: !this.hasIntegratedEmbeddings && !isFreeTier
             });
             if (readCapacity.error || !readCapacity.value) {
                 throw new Error(readCapacity.error || 'Read capacity is invalid.');
             }
             const readCapacityValue = readCapacity.value;
-            if (this.initialReadCapacityMode === 'Dedicated' && readCapacityValue.mode === 'OnDemand') {
+            if (!isFreeTier && this.initialReadCapacityMode === 'Dedicated' && readCapacityValue.mode === 'OnDemand') {
                 throw new Error('Switching a Dedicated Read Nodes index back to OnDemand is not supported in this extension.');
             }
 
@@ -245,7 +254,7 @@ export class ConfigureIndexPanel {
                     deletion_protection: deletionProtection as 'enabled' | 'disabled',
                     tags
                 };
-                if (!this.hasIntegratedEmbeddings) {
+                if (!this.hasIntegratedEmbeddings && !isFreeTier) {
                     config.spec = {
                         serverless: {
                             read_capacity: readCapacityValue

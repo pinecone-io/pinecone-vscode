@@ -10,7 +10,7 @@ import { PineconeService } from '../services/pineconeService';
 import { PineconeTreeItem } from '../providers/treeItems';
 import { PineconeTreeDataProvider } from '../providers/pineconeTreeDataProvider';
 import { ChatPanel } from '../webview/chatPanel';
-import { AssistantModel } from '../api/types';
+import { AssistantModel, Organization } from '../api/types';
 import { buildProjectContextFromItem } from '../utils/treeItemHelpers';
 import { classifyError } from '../utils/errorHandling';
 import { refreshExplorer } from '../utils/refreshExplorer';
@@ -51,13 +51,15 @@ export class AssistantCommands {
         if (item?.parentId) {
             this.pineconeService.setProjectId(item.parentId);
         }
+        const organization = item?.metadata?.organization as Organization | undefined;
 
         const { CreateAssistantPanel } = await import('../webview/createAssistantPanel.js');
         CreateAssistantPanel.createOrShow(
             this.extensionUri,
             this.pineconeService,
             this.treeDataProvider,
-            projectContext
+            projectContext,
+            organization?.plan
         );
     }
 

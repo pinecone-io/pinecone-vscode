@@ -37,6 +37,7 @@ import { AUTH_CONTEXTS } from '../utils/constants';
 import { createComponentLogger } from '../utils/logger';
 import { classifyError } from '../utils/errorHandling';
 import { getReadCapacityTransitionState, summarizeReadCapacity } from '../utils/readCapacity';
+import { isFreeTierPlan } from '../utils/organizationPlan';
 
 /** Logger for tree data provider operations */
 const log = createComponentLogger('TreeDataProvider');
@@ -648,7 +649,7 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
             ? `${element.parentId}:${index.name}` 
             : index.name;
 
-        return [
+        const items: PineconeTreeItem[] = [
             new PineconeTreeItem(
                 'Namespaces',
                 PineconeItemType.NamespacesCategory,
@@ -656,16 +657,23 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
                 index.name,
                 compositeParentId,
                 { index, project, organization }
-            ),
-            new PineconeTreeItem(
-                'Backups',
-                PineconeItemType.BackupsCategory,
-                vscode.TreeItemCollapsibleState.Collapsed,
-                index.name,
-                compositeParentId,
-                { index, project, organization }
             )
         ];
+
+        if (!isFreeTierPlan(organization?.plan)) {
+            items.push(
+                new PineconeTreeItem(
+                    'Backups',
+                    PineconeItemType.BackupsCategory,
+                    vscode.TreeItemCollapsibleState.Collapsed,
+                    index.name,
+                    compositeParentId,
+                    { index, project, organization }
+                )
+            );
+        }
+
+        return items;
     }
 
     /**
@@ -688,7 +696,6 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
         if (!index || !indexName) {
             return [];
         }
-
         // Validate that metadata matches the expected index
         // This prevents using the wrong host if VSCode passes a stale/wrong element
         if (index.name !== indexName) {
@@ -771,6 +778,9 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
         if (!index || !indexName) {
             return [];
         }
+        if (isFreeTierPlan(organization?.plan)) {
+            return [];
+        }
 
         // Validate that metadata matches the expected index
         // This prevents using wrong data if VSCode passes a stale/wrong element
@@ -826,7 +836,7 @@ export class PineconeTreeDataProvider implements vscode.TreeDataProvider<Pinecon
                     vscode.TreeItemCollapsibleState.None,
                     backup.backup_id,  // Use backup_id as the resourceId
                     compositeParentId,
-                    { index, backup, project }
+                    { index, backup, project, organization }
                 );
                 
                 item.tooltip = this.formatBackupTooltip(backup);

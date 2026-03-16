@@ -150,6 +150,26 @@ button:hover {
     margin-bottom: 6px;
 }
 
+.snippet-reference {
+    margin-bottom: 8px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+}
+
+.snippet-reference-label {
+    color: var(--vscode-editor-foreground);
+    font-weight: 600;
+}
+
+.metadata-link {
+    color: var(--vscode-textLink-foreground);
+    text-decoration: none;
+}
+
+.metadata-link:hover {
+    text-decoration: underline;
+}
+
 .metadata-table {
     width: 100%;
     border-collapse: collapse;
@@ -180,12 +200,53 @@ button:hover {
 
 .text-content {
     background-color: var(--vscode-textBlockQuote-background);
-    padding: 8px 10px;
+    padding: 6px 8px;
     border-radius: 3px;
     border-left: 3px solid var(--vscode-textBlockQuote-border);
     line-height: 1.5;
     white-space: pre-wrap;
     word-wrap: break-word;
+    position: relative;
+}
+
+.text-content-actions {
+    display: flex;
+    gap: 8px;
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    margin: 0;
+}
+
+.text-content-body {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    padding-right: 130px;
+    margin: 0;
+}
+
+.text-action-btn {
+    display: inline-block;
+    width: auto;
+    padding: 0 7px;
+    margin: 0;
+    font-size: 0.8em;
+    line-height: 1.2;
+    min-height: 20px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.expand-btn,
+.copy-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.expand-btn:hover,
+.copy-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
 .code-block {

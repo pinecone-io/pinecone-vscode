@@ -33,6 +33,7 @@ import { buildProjectContextFromItem, setProjectContextFromItem } from '../utils
 import { refreshExplorer } from '../utils/refreshExplorer';
 import { summarizeReadCapacity } from '../utils/readCapacity';
 import { waitForIndexReadyForOperations } from '../utils/indexReadiness';
+import { isFreeTierPlan } from '../utils/organizationPlan';
 
 export function formatIndexStatsMessage(name: string, stats: IndexStats, indexDetails: IndexModel): string {
     const readCapacity = summarizeReadCapacity(indexDetails);
@@ -113,12 +114,16 @@ export class IndexCommands {
         }
 
         const projectContext = item ? buildProjectContextFromItem(item) : undefined;
+        const organizationPlan = item?.metadata?.organization && typeof item.metadata.organization === 'object'
+            ? String((item.metadata.organization as { plan?: string }).plan || '')
+            : undefined;
         const { CreateIndexPanel } = await import('../webview/createIndexPanel.js');
         CreateIndexPanel.createOrShow(
             this.extensionUri || vscode.Uri.file(''),
             this.pineconeService,
             this.treeDataProvider,
-            projectContext
+            projectContext,
+            organizationPlan
         );
     }
 
@@ -249,7 +254,7 @@ export class IndexCommands {
                         // Still initializing
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
-                    } catch (pollError) {
+                    } catch (_pollError) {
                         // Index might not be immediately visible, continue polling
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
@@ -410,7 +415,7 @@ export class IndexCommands {
                         // Still initializing
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
-                    } catch (pollError) {
+                    } catch (_pollError) {
                         // Index might not be immediately visible, continue polling
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
@@ -597,12 +602,16 @@ export class IndexCommands {
             return;
         }
         const { ConfigureIndexPanel } = await import('../webview/configureIndexPanel.js');
+        const organizationPlan = item?.metadata?.organization && typeof item.metadata.organization === 'object'
+            ? String((item.metadata.organization as { plan?: string }).plan || '')
+            : undefined;
         ConfigureIndexPanel.createOrShow(
             this.extensionUri || vscode.Uri.file(''),
             this.pineconeService,
             this.treeDataProvider,
             item.resourceId,
-            projectContext
+            projectContext,
+            organizationPlan
         );
     }
 
@@ -706,6 +715,10 @@ export class IndexCommands {
      * @see https://docs.pinecone.io/reference/api/2025-10/control-plane/create_backup
      */
     async createBackup(item: PineconeTreeItem): Promise<void> {
+        if (this.isFreeTierOrganization(item)) {
+            vscode.window.showWarningMessage('Backup and restore are not available on the Free plan.');
+            return;
+        }
         if (!item.resourceId) { return; }
         const indexName = item.resourceId;
 
@@ -805,6 +818,10 @@ export class IndexCommands {
      * @see https://docs.pinecone.io/reference/api/2025-10/control-plane/list_index_backups
      */
     async viewBackups(item: PineconeTreeItem): Promise<void> {
+        if (this.isFreeTierOrganization(item)) {
+            vscode.window.showWarningMessage('Backup and restore are not available on the Free plan.');
+            return;
+        }
         if (!item.resourceId) { return; }
         const indexName = item.resourceId;
 
@@ -912,6 +929,10 @@ export class IndexCommands {
      * @see https://docs.pinecone.io/reference/api/2025-10/control-plane/create_index_from_backup
      */
     async restoreBackup(item: PineconeTreeItem): Promise<void> {
+        if (this.isFreeTierOrganization(item)) {
+            vscode.window.showWarningMessage('Backup and restore are not available on the Free plan.');
+            return;
+        }
         // Build project context for API calls
         const projectContext = buildProjectContextFromItem(item);
         
@@ -1088,7 +1109,7 @@ export class IndexCommands {
                         // Still initializing
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
-                    } catch (e: unknown) {
+                    } catch (_e: unknown) {
                         // Index might not exist yet in early stages, continue polling
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
@@ -1124,6 +1145,10 @@ export class IndexCommands {
      * @see https://docs.pinecone.io/reference/api/2025-10/control-plane/delete_backup
      */
     async deleteBackup(item: PineconeTreeItem): Promise<void> {
+        if (this.isFreeTierOrganization(item)) {
+            vscode.window.showWarningMessage('Backup and restore are not available on the Free plan.');
+            return;
+        }
         // Set project context from tree item for JWT authentication
         // Uses full project context when available for managed API key authentication
         // This is critical for backup operations which require proper Api-Key auth
@@ -1240,6 +1265,10 @@ export class IndexCommands {
     }
 
     async viewRestoreJobs(item?: PineconeTreeItem): Promise<void> {
+        if (item && this.isFreeTierOrganization(item)) {
+            vscode.window.showWarningMessage('Backup and restore are not available on the Free plan.');
+            return;
+        }
         if (!item || item.itemType !== PineconeItemType.BackupsCategory || !item.resourceId) {
             vscode.window.showErrorMessage(
                 'Backup/Restore Jobs is index-scoped. Open it from the Backups node under an index.'
@@ -1275,5 +1304,10 @@ export class IndexCommands {
         const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+    }
+
+    private isFreeTierOrganization(item?: PineconeTreeItem): boolean {
+        const organization = item?.metadata?.organization as { plan?: string } | undefined;
+        return isFreeTierPlan(organization?.plan);
     }
 }

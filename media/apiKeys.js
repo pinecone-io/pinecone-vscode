@@ -5,7 +5,9 @@
     const errorDiv = document.getElementById('error');
     const projectName = document.getElementById('project-name');
     const rolesSelect = document.getElementById('key-roles');
+    const rolesHint = document.getElementById('key-roles-hint');
     let previousRoleSelection = new Set();
+    let enforceProjectEditorOnly = false;
 
     const ROLE = {
         projectEditor: 'ProjectEditor',
@@ -92,6 +94,11 @@
     }
 
     function normalizeRoleSelection(preferredRole) {
+        if (enforceProjectEditorOnly) {
+            applySelection(new Set([ROLE.projectEditor]));
+            previousRoleSelection = new Set([ROLE.projectEditor]);
+            return;
+        }
         const selection = selectedRoleSet();
         resolveExclusive(selection, ROLE.projectEditor, ROLE.projectViewer, preferredRole);
         resolveExclusive(selection, ROLE.controlPlaneEditor, ROLE.controlPlaneViewer, preferredRole);
@@ -123,6 +130,28 @@
         previousRoleSelection = new Set(selection);
     }
 
+    function applyRolePolicy() {
+        if (!(rolesSelect instanceof HTMLSelectElement)) {
+            return;
+        }
+
+        if (enforceProjectEditorOnly) {
+            rolesSelect.disabled = true;
+            applySelection(new Set([ROLE.projectEditor]));
+            previousRoleSelection = new Set([ROLE.projectEditor]);
+            if (rolesHint) {
+                rolesHint.textContent = 'Free tier API keys are restricted to the ProjectEditor role.';
+            }
+            return;
+        }
+
+        rolesSelect.disabled = false;
+        if (rolesHint) {
+            rolesHint.textContent = 'Select either ProjectEditor/ProjectViewer, or select neither project role and choose Control Plane/Data Plane roles. Project roles do not imply Control Plane or Data Plane roles. Key secret is shown once and never stored by the extension.';
+        }
+        normalizeRoleSelection();
+    }
+
     if (rolesSelect instanceof HTMLSelectElement) {
         rolesSelect.addEventListener('change', () => {
             const current = selectedRoleSet();
@@ -135,9 +164,11 @@
     document.getElementById('create-key').addEventListener('click', () => {
         clearError();
         normalizeRoleSelection();
-        const selectedRoles = rolesSelect instanceof HTMLSelectElement
-            ? Array.from(rolesSelect.selectedOptions).map(option => option.value)
-            : [];
+        const selectedRoles = enforceProjectEditorOnly
+            ? [ROLE.projectEditor]
+            : (rolesSelect instanceof HTMLSelectElement
+                ? Array.from(rolesSelect.selectedOptions).map(option => option.value)
+                : []);
         vscode.postMessage({
             command: 'createKey',
             payload: {
@@ -181,6 +212,10 @@
                 break;
             case 'setProject':
                 projectName.textContent = message.projectName || 'Unknown Project';
+                break;
+            case 'rolePolicy':
+                enforceProjectEditorOnly = !!message.enforceProjectEditorOnly;
+                applyRolePolicy();
                 break;
         }
     });

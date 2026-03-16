@@ -15,6 +15,7 @@
     const errorDiv = document.getElementById('error');
     const successDiv = document.getElementById('success');
     let hasIntegratedEmbeddings = false;
+    let isFreeTier = false;
     let canSwitchToOnDemand = true;
 
     function showError(message) {
@@ -44,6 +45,26 @@
     }
 
     function setReadCapacityEditableState() {
+        if (isFreeTier) {
+            readCapacityMode.disabled = true;
+            readCapacityNodeType.disabled = true;
+            readCapacityReplicas.disabled = true;
+            readCapacityShards.disabled = true;
+
+            const onDemandOption = readCapacityMode.querySelector('option[value="OnDemand"]');
+            if (onDemandOption) {
+                onDemandOption.disabled = false;
+            }
+            const dedicatedOption = readCapacityMode.querySelector('option[value="Dedicated"]');
+            if (dedicatedOption) {
+                dedicatedOption.disabled = true;
+            }
+
+            readCapacityHint.textContent = 'Read capacity configuration is not available on the Free plan.';
+            dedicatedReadCapacity.classList.add('hidden');
+            return;
+        }
+
         const disabled = hasIntegratedEmbeddings;
         readCapacityMode.disabled = disabled;
         readCapacityNodeType.disabled = disabled;
@@ -53,6 +74,10 @@
         const onDemandOption = readCapacityMode.querySelector('option[value="OnDemand"]');
         if (onDemandOption) {
             onDemandOption.disabled = !canSwitchToOnDemand;
+        }
+        const dedicatedOption = readCapacityMode.querySelector('option[value="Dedicated"]');
+        if (dedicatedOption) {
+            dedicatedOption.disabled = false;
         }
 
         if (!canSwitchToOnDemand && readCapacityMode.value === 'OnDemand') {
@@ -171,6 +196,7 @@
                 }
                 deletionProtectionSelect.value = message.deletionProtection || 'disabled';
                 hasIntegratedEmbeddings = !!message.hasIntegratedEmbeddings;
+                isFreeTier = !!message.isFreeTier;
                 canSwitchToOnDemand = message.canSwitchToOnDemand !== false;
                 const readCapacity = message.readCapacity || {};
                 readCapacityMode.value = readCapacity.mode || 'OnDemand';
