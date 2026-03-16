@@ -18,6 +18,8 @@ import { isFreeTierPlan } from '../utils/organizationPlan';
 interface DataOpsMessage {
     command: string;
     payload?: Record<string, unknown>;
+    text?: string;
+    copyId?: string;
 }
 
 export class DataOpsPanel {
@@ -184,6 +186,9 @@ export class DataOpsPanel {
                     } else {
                         await this.sendActiveImports();
                     }
+                    return;
+                case 'copyToClipboard':
+                    await this.copyTextToClipboard(message.text, message.copyId);
                     return;
                 case 'upsertVectors': {
                     if (this.hasIntegratedEmbeddings) {
@@ -440,6 +445,22 @@ export class DataOpsPanel {
             action,
             result
         });
+    }
+
+    private async copyTextToClipboard(text: string | undefined, copyId: string | undefined): Promise<void> {
+        if (!copyId) {
+            return;
+        }
+        try {
+            await vscode.env.clipboard.writeText(String(text || ''));
+            await this.panel.webview.postMessage({ command: 'copied', copyId });
+        } catch {
+            await this.panel.webview.postMessage({
+                command: 'copyError',
+                copyId,
+                message: 'Failed to copy text to clipboard.'
+            });
+        }
     }
 
     private async sendActiveImports(): Promise<void> {

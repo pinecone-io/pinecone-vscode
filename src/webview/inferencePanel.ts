@@ -16,6 +16,8 @@ import { FREE_TIER_BLOCKED_RERANK_MODEL, isFreeTierPlan, normalizeOrganizationPl
 interface InferenceMessage {
     command: string;
     payload?: Record<string, unknown>;
+    text?: string;
+    copyId?: string;
 }
 
 interface InferenceModelInfo {
@@ -183,12 +185,17 @@ export class InferencePanel {
                 case 'ready':
                     await this.reloadModels();
                     return;
+                case 'copyToClipboard':
+                    await this.copyTextToClipboard(message.text, message.copyId);
+                    return;
                 case 'embed': {
                     const model = String(payload.model || '').trim();
                     if (!model) {
                         throw new Error('Select an embedding model.');
                     }
-                    const inputs = this.parseEmbedInputs(String(payload.inputs || ''));
+                    const inputs = this.parseEmbedInputs(
+                        payload.documents !== undefined ? payload.documents : payload.inputs
+                    );
                     const inputTexts = inputs.map(input => this.extractEmbedInputText(input));
                     const embedParameters = this.buildEmbedParameters(
                         model,
@@ -266,6 +273,22 @@ export class InferencePanel {
         await this.panel.webview.postMessage({ command: 'result', action, result, meta });
     }
 
+    private async copyTextToClipboard(text: string | undefined, copyId: string | undefined): Promise<void> {
+        if (!copyId) {
+            return;
+        }
+        try {
+            await vscode.env.clipboard.writeText(String(text || ''));
+            await this.panel.webview.postMessage({ command: 'copied', copyId });
+        } catch {
+            await this.panel.webview.postMessage({
+                command: 'copyError',
+                copyId,
+                message: 'Failed to copy text to clipboard.'
+            });
+        }
+    }
+
     private async reloadModels(): Promise<void> {
         try {
             await this.loadModelOptions();
@@ -301,17 +324,35 @@ export class InferencePanel {
         return byName.length > 0 ? byName : models;
     }
 
-    private parseEmbedInputs(rawInputs: string): Array<Record<string, unknown>> {
-        const trimmed = rawInputs.trim();
+    private parseEmbedInputs(rawInputs: unknown): Array<Record<string, unknown>> {
+        if (Array.isArray(rawInputs)) {
+            const normalized = this.normalizeInputObjects(
+                rawInputs,
+                'Embed documents must be strings or objects.'
+            );
+            if (!normalized.length) {
+                throw new Error('At least one embed document is required.');
+            }
+            return normalized;
+        }
+
+        const trimmed = String(rawInputs || '').trim();
         if (!trimmed) {
-            throw new Error('Embed inputs are required.');
+            throw new Error('At least one embed document is required.');
         }
 
         if (trimmed.startsWith('[')) {
             try {
                 const parsed = JSON.parse(trimmed);
                 if (Array.isArray(parsed)) {
-                    return this.normalizeInputObjects(parsed, 'Embed inputs array entries must be strings or objects.');
+                    const normalized = this.normalizeInputObjects(
+                        parsed,
+                        'Embed inputs array entries must be strings or objects.'
+                    );
+                    if (!normalized.length) {
+                        throw new Error('At least one embed document is required.');
+                    }
+                    return normalized;
                 }
             } catch {
                 throw new Error('Embed inputs JSON must be a valid array of strings or objects.');
@@ -320,7 +361,7 @@ export class InferencePanel {
 
         const lines = trimmed.split('\n').map(v => v.trim()).filter(Boolean);
         if (!lines.length) {
-            throw new Error('Embed inputs are required.');
+            throw new Error('At least one embed document is required.');
         }
         return lines.map(text => ({ text }));
     }

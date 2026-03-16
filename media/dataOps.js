@@ -10,9 +10,12 @@
     const activeImportsList = document.getElementById('active-imports-list');
     const activeImportsEmpty = document.getElementById('active-imports-empty');
     const cancelImportBtn = document.getElementById('cancel-import-btn');
+    const MAX_TEXT_PREVIEW_LENGTH = 300;
+
     let activeImports = [];
     let selectedActiveImportId = '';
     let importsDisabled = false;
+    let nextCopyRequestId = 1;
 
     const actionResultIds = {
         upsertVectors: 'result-upsertVectors',
@@ -95,10 +98,10 @@
             return;
         }
 
-        const hasExistingSelection = activeImports.some((job) => String(job.id || '') === selectedBefore);
+        const hasExistingSelection = activeImports.some(job => String(job.id || '') === selectedBefore);
         selectedActiveImportId = hasExistingSelection ? selectedBefore : String(activeImports[0].id || '');
 
-        activeImports.forEach((job) => {
+        activeImports.forEach(job => {
             const row = document.createElement('label');
             row.className = 'job-select-row';
 
@@ -123,6 +126,7 @@
 
             const namespace = job.namespace ? String(job.namespace) : '(default)';
             const uri = job.uri ? String(job.uri) : 'Unknown URI';
+
             const meta = document.createElement('div');
             meta.className = 'job-meta';
             meta.textContent = `${job.status || 'Unknown'} | Namespace: ${namespace} | Created: ${formatDate(job.created_at)}`;
@@ -244,10 +248,12 @@
         if (!id) {
             return;
         }
+
         const sectionResult = document.getElementById(id);
         if (!sectionResult) {
             return;
         }
+
         sectionResult.classList.remove('hidden');
         sectionResult.innerHTML = '';
         sectionResult.appendChild(renderResultBlock(action, value));
@@ -256,12 +262,14 @@
     function renderResultBlock(action, value) {
         const wrapper = document.createElement('div');
         wrapper.className = 'results-section';
+
         const header = document.createElement('div');
         header.className = 'results-header';
         const title = document.createElement('div');
         title.className = 'results-title';
         title.textContent = `${friendlyActionName(action)} result`;
         header.appendChild(title);
+
         const clearBtn = document.createElement('button');
         clearBtn.type = 'button';
         clearBtn.className = 'secondary-action';
@@ -273,7 +281,7 @@
         const items = extractItemList(value);
         if (items.length > 0) {
             items.forEach((item, index) => {
-                wrapper.appendChild(renderMatchItem(item, index));
+                wrapper.appendChild(renderMatchItem(item, index, action));
             });
             return wrapper;
         }
@@ -287,7 +295,7 @@
         }
 
         if (typeof value === 'object') {
-            wrapper.appendChild(createTableForObject(value));
+            wrapper.appendChild(createTableForObject(value, action));
             return wrapper;
         }
 
@@ -312,7 +320,7 @@
         }
         if (value.vectors && typeof value.vectors === 'object') {
             return Object.entries(value.vectors).map(([id, vector]) => {
-                const vectorObject = (vector && typeof vector === 'object') ? vector : {};
+                const vectorObject = vector && typeof vector === 'object' ? vector : {};
                 return { id, ...vectorObject };
             });
         }
@@ -331,12 +339,13 @@
         return [];
     }
 
-    function renderMatchItem(item, index) {
+    function renderMatchItem(item, index, action) {
         const el = document.createElement('div');
         el.className = 'match-item';
 
         const header = document.createElement('div');
         header.className = 'match-header';
+
         const left = document.createElement('span');
         left.textContent = item && item.id ? `ID: ${item.id}` : `Item ${index + 1}`;
         header.appendChild(left);
@@ -345,7 +354,16 @@
             const right = document.createElement('span');
             right.textContent = `Score: ${item.score.toFixed(4)}`;
             header.appendChild(right);
+        } else if (action === 'listVectorIds' && item && typeof item.id === 'string') {
+            const copyBtn = document.createElement('button');
+            copyBtn.type = 'button';
+            copyBtn.className = 'secondary-action row-copy-btn';
+            copyBtn.textContent = 'Copy';
+            copyBtn.setAttribute('data-row-copy', 'true');
+            copyBtn.setAttribute('data-copy-text', item.id);
+            header.appendChild(copyBtn);
         }
+
         el.appendChild(header);
 
         if (item && typeof item === 'object') {
@@ -353,7 +371,7 @@
             delete details.id;
             delete details.score;
             if (Object.keys(details).length > 0) {
-                el.appendChild(createTableForObject(details));
+                el.appendChild(createTableForObject(details, action));
             }
         } else {
             const text = document.createElement('div');
@@ -364,13 +382,14 @@
         return el;
     }
 
-    function createTableForObject(value) {
+    function createTableForObject(value, action) {
         const table = document.createElement('table');
         table.className = 'metadata-table';
         const objectValue = value && typeof value === 'object' ? value : {};
 
         Object.entries(objectValue).forEach(([key, raw]) => {
             const row = document.createElement('tr');
+
             const keyCell = document.createElement('td');
             keyCell.className = 'metadata-key';
             keyCell.textContent = key;
@@ -378,15 +397,24 @@
 
             const valueCell = document.createElement('td');
             valueCell.className = 'metadata-value';
-            valueCell.appendChild(renderValueNode(key, raw));
+            valueCell.appendChild(renderValueNode(key, raw, action));
             row.appendChild(valueCell);
 
             table.appendChild(row);
         });
+
         return table;
     }
 
-    function renderValueNode(key, value) {
+    function isFetchAction(action) {
+        return action === 'fetchVectors' || action === 'fetchByMetadata';
+    }
+
+    function formatArrayForPreview(value) {
+        return `[${value.map(item => String(item)).join(', ')}]`;
+    }
+
+    function renderValueNode(key, value, action) {
         if (value === null || value === undefined) {
             const span = document.createElement('span');
             span.className = 'empty-result';
@@ -394,13 +422,16 @@
             return span;
         }
 
+        const normalizedKey = String(key || '').toLowerCase();
+
         if (typeof value === 'string') {
-            const looksLikeLongText = key === 'text' || key === 'content' || key === 'chunk_text' || value.length > 180;
+            const looksLikeLongText = normalizedKey === 'text'
+                || normalizedKey === 'content'
+                || normalizedKey === 'chunk_text'
+                || value.length > 180
+                || (isFetchAction(action) && normalizedKey === 'text');
             if (looksLikeLongText) {
-                const div = document.createElement('div');
-                div.className = 'text-content';
-                div.textContent = value;
-                return div;
+                return renderTextContent(value);
             }
             const span = document.createElement('span');
             span.textContent = value;
@@ -420,6 +451,9 @@
                 span.textContent = '[]';
                 return span;
             }
+            if (isFetchAction(action) && normalizedKey === 'values') {
+                return renderTextContent(formatArrayForPreview(value));
+            }
             const allPrimitive = value.every(item => item === null || ['string', 'number', 'boolean'].includes(typeof item));
             if (allPrimitive) {
                 const span = document.createElement('span');
@@ -428,18 +462,115 @@
             }
             const container = document.createElement('div');
             value.forEach((item, index) => {
-                container.appendChild(renderMatchItem(item, index));
+                container.appendChild(renderMatchItem(item, index, action));
             });
             return container;
         }
 
         if (typeof value === 'object') {
-            return createTableForObject(value);
+            return createTableForObject(value, action);
         }
 
         const fallback = document.createElement('span');
         fallback.textContent = String(value);
         return fallback;
+    }
+
+    function renderTextContent(fullText) {
+        const normalizedText = String(fullText || '').replace(/^\s+/, '');
+        const isExpandable = normalizedText.length > MAX_TEXT_PREVIEW_LENGTH;
+        const collapsedText = isExpandable
+            ? `${normalizedText.substring(0, MAX_TEXT_PREVIEW_LENGTH)}...`
+            : normalizedText;
+
+        const container = document.createElement('div');
+        container.className = `text-content ${isExpandable ? 'expandable' : ''}`;
+        container.dataset.full = normalizedText;
+        container.dataset.collapsed = collapsedText;
+        container.dataset.expanded = 'false';
+
+        const actions = document.createElement('div');
+        actions.className = 'text-content-actions';
+
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'text-action-btn copy-btn';
+        copyButton.textContent = 'Copy';
+        copyButton.setAttribute('data-text-action', 'copy');
+        actions.appendChild(copyButton);
+
+        if (isExpandable) {
+            const toggleButton = document.createElement('button');
+            toggleButton.type = 'button';
+            toggleButton.className = 'text-action-btn expand-btn';
+            toggleButton.textContent = 'Show more';
+            toggleButton.setAttribute('data-text-action', 'toggle');
+            actions.appendChild(toggleButton);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'text-content-body';
+        body.textContent = isExpandable ? collapsedText : normalizedText;
+
+        container.appendChild(actions);
+        container.appendChild(body);
+        return container;
+    }
+
+    function toggleTextContent(container) {
+        const isExpanded = container.dataset.expanded === 'true';
+        const fullText = container.dataset.full || '';
+        const collapsedText = container.dataset.collapsed || fullText;
+        const body = container.querySelector('.text-content-body');
+        const toggleButton = container.querySelector('button[data-text-action="toggle"]');
+
+        if (body) {
+            body.textContent = isExpanded ? collapsedText : fullText;
+        }
+        if (toggleButton) {
+            toggleButton.textContent = isExpanded ? 'Show more' : 'Show less';
+        }
+        container.dataset.expanded = isExpanded ? 'false' : 'true';
+    }
+
+    function requestCopy(fullText, button) {
+        const copyId = `copy-${nextCopyRequestId++}`;
+        button.dataset.copyId = copyId;
+        button.disabled = true;
+        button.textContent = 'Copying...';
+        vscode.postMessage({
+            command: 'copyToClipboard',
+            text: fullText,
+            copyId
+        });
+    }
+
+    function markCopied(copyId) {
+        const selector = `button[data-copy-id="${copyId}"]`;
+        const button = document.querySelector(selector);
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        button.disabled = false;
+        button.textContent = 'Copied';
+        setTimeout(() => {
+            button.textContent = 'Copy';
+            button.removeAttribute('data-copy-id');
+        }, 1200);
+    }
+
+    function markCopyFailed(copyId, message) {
+        const selector = `button[data-copy-id="${copyId}"]`;
+        const button = document.querySelector(selector);
+        if (button instanceof HTMLButtonElement) {
+            button.disabled = false;
+            button.textContent = 'Copy';
+            button.removeAttribute('data-copy-id');
+        }
+        if (message) {
+            showError(message);
+        }
     }
 
     function friendlyActionName(action) {
@@ -468,6 +599,37 @@
                 return 'Operation';
         }
     }
+
+    document.addEventListener('click', event => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const actionButton = target.closest('button[data-text-action]');
+        if (actionButton instanceof HTMLButtonElement) {
+            const container = actionButton.closest('.text-content[data-full]');
+            if (!(container instanceof HTMLElement)) {
+                return;
+            }
+
+            const action = actionButton.getAttribute('data-text-action');
+            if (action === 'toggle') {
+                toggleTextContent(container);
+                return;
+            }
+            if (action === 'copy') {
+                requestCopy(container.dataset.full || '', actionButton);
+                return;
+            }
+        }
+
+        const rowCopyButton = target.closest('button[data-row-copy]');
+        if (!(rowCopyButton instanceof HTMLButtonElement)) {
+            return;
+        }
+        requestCopy(rowCopyButton.dataset.copyText || '', rowCopyButton);
+    });
 
     document.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -504,6 +666,12 @@
                 break;
             case 'result':
                 setSectionResult(message.action, message.result);
+                break;
+            case 'copied':
+                markCopied(message.copyId);
+                break;
+            case 'copyError':
+                markCopyFailed(message.copyId, message.message);
                 break;
             case 'error':
                 showError(message.message);

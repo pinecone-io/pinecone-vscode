@@ -5,6 +5,9 @@
     const modeTitleEl = document.getElementById('mode-title');
     const errorDiv = document.getElementById('error');
     const sections = Array.from(document.querySelectorAll('[data-mode]'));
+    const MAX_TEXT_PREVIEW_LENGTH = 300;
+
+    let nextCopyRequestId = 1;
 
     const actionResultIds = {
         updateAssistant: 'result-updateAssistant',
@@ -64,12 +67,14 @@
         title.className = 'results-title';
         title.textContent = `${friendlyActionName(action)} result`;
         header.appendChild(title);
+
         const clearBtn = document.createElement('button');
         clearBtn.type = 'button';
         clearBtn.className = 'secondary-action';
         clearBtn.textContent = 'Clear';
         clearBtn.addEventListener('click', () => clearSectionResult(action));
         header.appendChild(clearBtn);
+
         wrapper.appendChild(header);
 
         if (action === 'retrieveContext') {
@@ -125,29 +130,116 @@
         return [];
     }
 
+    function resolveSnippetReference(snippet, index) {
+        const sourceFile = firstString([
+            snippet && snippet.source_file,
+            snippet && snippet.file_name,
+            snippet && snippet.file && snippet.file.name
+        ]);
+        const signedUrl = firstString([
+            snippet && snippet.signed_url,
+            snippet && snippet.file && snippet.file.signed_url,
+            snippet && snippet.file && snippet.file.url
+        ]);
+
+        if (!sourceFile && !signedUrl) {
+            return {
+                label: `Snippet ${index + 1}`,
+                url: undefined
+            };
+        }
+
+        return {
+            label: sourceFile || `Snippet ${index + 1}`,
+            url: signedUrl
+        };
+    }
+
+    function firstString(values) {
+        for (const value of values) {
+            if (typeof value === 'string' && value.trim()) {
+                return value;
+            }
+        }
+        return undefined;
+    }
+
+    function resolveReferenceFromObject(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return undefined;
+        }
+
+        const fileName = firstString([
+            value.source_file,
+            value.file_name,
+            value.name,
+            value.file && value.file.name
+        ]);
+        const signedUrl = firstString([
+            value.signed_url,
+            value.url,
+            value.file && value.file.signed_url,
+            value.file && value.file.url
+        ]);
+
+        if (!fileName && !signedUrl) {
+            return undefined;
+        }
+
+        return {
+            label: fileName || 'Download',
+            url: signedUrl
+        };
+    }
+
     function renderSnippet(snippet, index) {
         const item = document.createElement('div');
         item.className = 'match-item';
+
         const header = document.createElement('div');
         header.className = 'match-header';
-        const rawTitle = snippet?.file?.name || snippet?.file_name || `Snippet ${index + 1}`;
-        const rawScore = typeof snippet?.score === 'number' ? snippet.score.toFixed(4) : undefined;
+
         const title = document.createElement('span');
-        title.textContent = rawTitle;
+        title.textContent = `Snippet ${index + 1}`;
         header.appendChild(title);
-        if (rawScore) {
+
+        if (typeof snippet?.score === 'number') {
             const score = document.createElement('span');
-            score.textContent = `Score: ${rawScore}`;
+            score.textContent = `Score: ${snippet.score.toFixed(4)}`;
             header.appendChild(score);
         }
         item.appendChild(header);
 
+        const reference = resolveSnippetReference(snippet, index);
+        if (reference) {
+            const referenceRow = document.createElement('div');
+            referenceRow.className = 'snippet-reference';
+
+            const label = document.createElement('span');
+            label.className = 'snippet-reference-label';
+            label.textContent = 'Reference: ';
+            referenceRow.appendChild(label);
+
+            if (reference.url) {
+                const link = document.createElement('a');
+                link.className = 'metadata-link';
+                link.href = reference.url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = reference.label;
+                referenceRow.appendChild(link);
+            } else {
+                const text = document.createElement('span');
+                text.textContent = reference.label;
+                referenceRow.appendChild(text);
+            }
+
+            item.appendChild(referenceRow);
+        }
+
         const text = snippet?.text || snippet?.chunk_text || snippet?.content;
         if (typeof text === 'string' && text.trim()) {
-            const content = document.createElement('div');
-            content.className = 'text-content';
-            content.textContent = text;
-            item.appendChild(content);
+            item.appendChild(renderTextContent(text));
         }
 
         const details = { ...snippet };
@@ -155,6 +247,11 @@
         delete details.chunk_text;
         delete details.content;
         delete details.score;
+        delete details.source_file;
+        delete details.file_name;
+        delete details.signed_url;
+        delete details.file;
+
         if (Object.keys(details).length > 0) {
             item.appendChild(createTableForObject(details));
         }
@@ -162,10 +259,108 @@
         return item;
     }
 
+    function renderTextContent(fullText) {
+        const normalizedText = String(fullText || '').replace(/^\s+/, '');
+        const isExpandable = normalizedText.length > MAX_TEXT_PREVIEW_LENGTH;
+        const collapsedText = isExpandable
+            ? `${normalizedText.substring(0, MAX_TEXT_PREVIEW_LENGTH)}...`
+            : normalizedText;
+
+        const container = document.createElement('div');
+        container.className = `text-content ${isExpandable ? 'expandable' : ''}`;
+        container.dataset.full = normalizedText;
+        container.dataset.collapsed = collapsedText;
+        container.dataset.expanded = 'false';
+
+        const actions = document.createElement('div');
+        actions.className = 'text-content-actions';
+
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'text-action-btn copy-btn';
+        copyButton.textContent = 'Copy';
+        copyButton.setAttribute('data-text-action', 'copy');
+        actions.appendChild(copyButton);
+
+        if (isExpandable) {
+            const toggleButton = document.createElement('button');
+            toggleButton.type = 'button';
+            toggleButton.className = 'text-action-btn expand-btn';
+            toggleButton.textContent = 'Show more';
+            toggleButton.setAttribute('data-text-action', 'toggle');
+            actions.appendChild(toggleButton);
+        }
+
+        const body = document.createElement('div');
+        body.className = 'text-content-body';
+        body.textContent = isExpandable ? collapsedText : normalizedText;
+
+        container.appendChild(actions);
+        container.appendChild(body);
+        return container;
+    }
+
+    function toggleTextContent(container) {
+        const isExpanded = container.dataset.expanded === 'true';
+        const fullText = container.dataset.full || '';
+        const collapsedText = container.dataset.collapsed || fullText;
+        const body = container.querySelector('.text-content-body');
+        const toggleButton = container.querySelector('button[data-text-action="toggle"]');
+
+        if (body) {
+            body.textContent = isExpanded ? collapsedText : fullText;
+        }
+        if (toggleButton) {
+            toggleButton.textContent = isExpanded ? 'Show more' : 'Show less';
+        }
+        container.dataset.expanded = isExpanded ? 'false' : 'true';
+    }
+
+    function requestCopy(fullText, button) {
+        const copyId = `copy-${nextCopyRequestId++}`;
+        button.dataset.copyId = copyId;
+        button.disabled = true;
+        button.textContent = 'Copying...';
+        vscode.postMessage({
+            command: 'copyToClipboard',
+            text: fullText,
+            copyId
+        });
+    }
+
+    function markCopied(copyId) {
+        const selector = `button[data-copy-id="${copyId}"]`;
+        const button = document.querySelector(selector);
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        button.disabled = false;
+        button.textContent = 'Copied';
+        setTimeout(() => {
+            button.textContent = 'Copy';
+            button.removeAttribute('data-copy-id');
+        }, 1200);
+    }
+
+    function markCopyFailed(copyId, message) {
+        const selector = `button[data-copy-id="${copyId}"]`;
+        const button = document.querySelector(selector);
+        if (button instanceof HTMLButtonElement) {
+            button.disabled = false;
+            button.textContent = 'Copy';
+            button.removeAttribute('data-copy-id');
+        }
+        if (message) {
+            showError(message);
+        }
+    }
+
     function createTableForObject(obj) {
         const table = document.createElement('table');
         table.className = 'metadata-table';
         const value = (obj && typeof obj === 'object') ? obj : {};
+
         Object.entries(value).forEach(([key, raw]) => {
             const row = document.createElement('tr');
 
@@ -206,13 +401,30 @@
             return span;
         }
 
+        const normalizedKey = String(key || '').toLowerCase();
+
+        if (normalizedKey === 'reference') {
+            const resolved = resolveReferenceFromObject(value);
+            if (resolved) {
+                if (resolved.url) {
+                    const link = document.createElement('a');
+                    link.className = 'metadata-link';
+                    link.href = resolved.url;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.textContent = resolved.label;
+                    return link;
+                }
+                const span = document.createElement('span');
+                span.textContent = resolved.label;
+                return span;
+            }
+        }
+
         if (typeof value === 'string') {
             const longText = key === 'text' || key === 'content' || key === 'answer' || value.length > 160;
             if (longText) {
-                const block = document.createElement('div');
-                block.className = 'text-content';
-                block.textContent = value;
-                return block;
+                return renderTextContent(value);
             }
             const span = document.createElement('span');
             span.textContent = value;
@@ -297,6 +509,7 @@
             context: 'Retrieve Context',
             evaluate: 'Evaluate Answer'
         };
+
         sections.forEach(section => {
             if (section.dataset.mode === mode) {
                 section.classList.remove('hidden');
@@ -304,6 +517,7 @@
                 section.classList.add('hidden');
             }
         });
+
         if (modeTitleEl) {
             modeTitleEl.textContent = titleByMode[mode] || 'Assistant Tools';
         }
@@ -321,6 +535,33 @@
                 return 'Operation';
         }
     }
+
+    document.addEventListener('click', event => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const actionButton = target.closest('button[data-text-action]');
+        if (!(actionButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const container = actionButton.closest('.text-content[data-full]');
+        if (!(container instanceof HTMLElement)) {
+            return;
+        }
+
+        const action = actionButton.getAttribute('data-text-action');
+        if (action === 'toggle') {
+            toggleTextContent(container);
+            return;
+        }
+
+        if (action === 'copy') {
+            requestCopy(container.dataset.full || '', actionButton);
+        }
+    });
 
     document.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -349,6 +590,12 @@
                 break;
             case 'updateDefaults':
                 setUpdateDefaults(message.instructions, message.metadata);
+                break;
+            case 'copied':
+                markCopied(message.copyId);
+                break;
+            case 'copyError':
+                markCopyFailed(message.copyId, message.message);
                 break;
             case 'error':
                 showError(message.message);

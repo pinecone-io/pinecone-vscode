@@ -5,16 +5,21 @@
     const embedModelSelect = document.getElementById('embed-model');
     const embedInputTypeSelect = document.getElementById('embed-input-type');
     const rerankModelSelect = document.getElementById('rerank-model');
+    const embedDocumentsList = document.getElementById('embed-documents-list');
     const rerankDocumentsList = document.getElementById('rerank-documents-list');
+    const addEmbedDocumentBtn = document.getElementById('add-embed-document');
     const addRerankDocumentBtn = document.getElementById('add-rerank-document');
+    const clearEmbedDocumentsBtn = document.getElementById('clear-embed-documents');
+    const clearRerankDocumentsBtn = document.getElementById('clear-rerank-documents');
     const embedResultSection = document.getElementById('embed-result-section');
     const embedResultsList = document.getElementById('embed-results-list');
     const rerankResultSection = document.getElementById('rerank-result-section');
     const rerankResultsList = document.getElementById('rerank-results-list');
     const clearEmbedResultsBtn = document.getElementById('clear-embed-results');
     const clearRerankResultsBtn = document.getElementById('clear-rerank-results');
-    const clearRerankDocumentsBtn = document.getElementById('clear-rerank-documents');
     const MAX_TEXT_PREVIEW_LENGTH = 300;
+
+    let nextCopyRequestId = 1;
 
     function value(id) {
         const el = document.getElementById(id);
@@ -86,13 +91,13 @@
                 return {
                     model: value('embed-model'),
                     inputType: value('embed-input-type'),
-                    inputs: value('embed-inputs')
+                    documents: collectDocuments(embedDocumentsList)
                 };
             case 'rerank':
                 return {
                     model: value('rerank-model'),
                     query: value('rerank-query'),
-                    documents: collectRerankDocuments(),
+                    documents: collectDocuments(rerankDocumentsList),
                     topN: value('rerank-topn')
                 };
             default:
@@ -100,10 +105,11 @@
         }
     }
 
-    function addRerankDocument(initialValue) {
-        if (!rerankDocumentsList) {
+    function addDocument(listEl, initialValue) {
+        if (!listEl) {
             return;
         }
+
         const item = document.createElement('div');
         item.className = 'rerank-document';
 
@@ -129,6 +135,7 @@
         textarea.rows = 6;
         textarea.placeholder = 'Paste one full document here';
         textarea.value = initialValue || '';
+
         const body = document.createElement('div');
         body.className = 'rerank-document-body';
         body.appendChild(textarea);
@@ -138,35 +145,36 @@
         removeBtn.className = 'secondary-action';
         removeBtn.textContent = 'Delete Document';
         removeBtn.addEventListener('click', () => {
-            if (rerankDocumentsList.children.length <= 1) {
+            if (listEl.children.length <= 1) {
                 textarea.value = '';
                 return;
             }
             item.remove();
-            refreshRerankDocumentHeaders();
+            refreshDocumentHeaders(listEl);
         });
         header.appendChild(removeBtn);
 
         item.appendChild(header);
         item.appendChild(body);
-        rerankDocumentsList.appendChild(item);
-        refreshRerankDocumentHeaders();
+        listEl.appendChild(item);
+        refreshDocumentHeaders(listEl);
     }
 
-    function collectRerankDocuments() {
-        if (!rerankDocumentsList) {
+    function collectDocuments(listEl) {
+        if (!listEl) {
             return [];
         }
-        return Array.from(rerankDocumentsList.querySelectorAll('textarea'))
-            .map(el => el.value.trim())
-            .filter(Boolean);
+        return Array.from(listEl.querySelectorAll('textarea'))
+            .map(el => String(el.value || '').trim())
+            .filter(Boolean)
+            .map(text => ({ text }));
     }
 
-    function refreshRerankDocumentHeaders() {
-        if (!rerankDocumentsList) {
+    function refreshDocumentHeaders(listEl) {
+        if (!listEl) {
             return;
         }
-        Array.from(rerankDocumentsList.querySelectorAll('.rerank-document')).forEach((item, index) => {
+        Array.from(listEl.querySelectorAll('.rerank-document')).forEach((item, index) => {
             const title = item.querySelector('.rerank-document-title');
             if (title) {
                 title.textContent = `Document ${index + 1}`;
@@ -178,12 +186,12 @@
         });
     }
 
-    function clearRerankDocuments() {
-        if (!rerankDocumentsList) {
+    function clearDocuments(listEl) {
+        if (!listEl) {
             return;
         }
-        rerankDocumentsList.innerHTML = '';
-        addRerankDocument('');
+        listEl.innerHTML = '';
+        addDocument(listEl, '');
     }
 
     function renderEmbedResults(result, meta) {
@@ -191,6 +199,7 @@
             return;
         }
         embedResultsList.innerHTML = '';
+
         const vectors = Array.isArray(result && result.data) ? result.data : [];
         const inputTexts = Array.isArray(meta && meta.inputTexts) ? meta.inputTexts : [];
         if (vectors.length === 0) {
@@ -202,12 +211,17 @@
             return;
         }
 
+        const embedPreviewOptions = {
+            previewKeys: new Set(['values', 'input_text'])
+        };
+
         vectors.forEach((item, index) => {
-            const values = Array.isArray(item?.values) ? item.values : [];
-            const sparseValues = item?.sparse_values && typeof item.sparse_values === 'object'
+            const values = Array.isArray(item && item.values) ? item.values : [];
+            const sparseValues = item && item.sparse_values && typeof item.sparse_values === 'object'
                 ? item.sparse_values
                 : undefined;
             const itemIndex = typeof item?.index === 'number' ? item.index : index;
+
             const embeddingItem = {
                 id: `embedding-${itemIndex}`,
                 input_text: inputTexts[itemIndex] || inputTexts[index] || undefined,
@@ -217,7 +231,8 @@
                 values: values.length > 0 ? values : undefined,
                 sparse_values: sparseValues
             };
-            embedResultsList.appendChild(renderMatchItem(embeddingItem, index));
+
+            embedResultsList.appendChild(renderMatchItem(embeddingItem, index, embedPreviewOptions));
         });
 
         embedResultSection.classList.remove('hidden');
@@ -229,9 +244,9 @@
         }
         rerankResultsList.innerHTML = '';
 
-        const rows = Array.isArray(result?.data)
+        const rows = Array.isArray(result && result.data)
             ? result.data
-            : (Array.isArray(result?.results) ? result.results : []);
+            : (Array.isArray(result && result.results) ? result.results : []);
 
         if (meta && Number(meta.truncatedDocuments) > 0) {
             const note = document.createElement('div');
@@ -258,6 +273,7 @@
             const rank = document.createElement('span');
             rank.textContent = `Rank ${index + 1}`;
             header.appendChild(rank);
+
             if (typeof row?.score === 'number') {
                 const score = document.createElement('span');
                 score.textContent = `Score: ${row.score.toFixed(4)}`;
@@ -296,13 +312,15 @@
     }
 
     function renderTextContent(fullText) {
-        const text = String(fullText || '').replace(/^\s+/, '');
-        const isExpandable = text.length > MAX_TEXT_PREVIEW_LENGTH;
-        const collapsedText = isExpandable ? `${text.substring(0, MAX_TEXT_PREVIEW_LENGTH)}...` : text;
+        const normalizedText = String(fullText || '').replace(/^\s+/, '');
+        const isExpandable = normalizedText.length > MAX_TEXT_PREVIEW_LENGTH;
+        const collapsedText = isExpandable
+            ? `${normalizedText.substring(0, MAX_TEXT_PREVIEW_LENGTH)}...`
+            : normalizedText;
 
         const container = document.createElement('div');
         container.className = `text-content ${isExpandable ? 'expandable' : ''}`;
-        container.dataset.full = text;
+        container.dataset.full = normalizedText;
         container.dataset.collapsed = collapsedText;
         container.dataset.expanded = 'false';
 
@@ -311,47 +329,97 @@
 
         const copyButton = document.createElement('button');
         copyButton.type = 'button';
-        copyButton.className = 'text-action-btn secondary-action';
+        copyButton.className = 'text-action-btn copy-btn';
         copyButton.textContent = 'Copy';
-        copyButton.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(text);
-            } catch {
-                // Best effort only in webview sandbox.
-            }
-        });
+        copyButton.setAttribute('data-text-action', 'copy');
         actions.appendChild(copyButton);
 
         if (isExpandable) {
             const toggleButton = document.createElement('button');
             toggleButton.type = 'button';
-            toggleButton.className = 'text-action-btn secondary-action';
+            toggleButton.className = 'text-action-btn expand-btn';
             toggleButton.textContent = 'Show more';
-            toggleButton.addEventListener('click', () => {
-                const expanded = container.dataset.expanded === 'true';
-                body.textContent = expanded ? collapsedText : text;
-                toggleButton.textContent = expanded ? 'Show more' : 'Show less';
-                container.dataset.expanded = expanded ? 'false' : 'true';
-            });
+            toggleButton.setAttribute('data-text-action', 'toggle');
             actions.appendChild(toggleButton);
         }
 
         const body = document.createElement('div');
         body.className = 'text-content-body';
-        body.textContent = collapsedText;
+        body.textContent = isExpandable ? collapsedText : normalizedText;
 
         container.appendChild(actions);
         container.appendChild(body);
         return container;
     }
 
-    function createTableForObject(value) {
+    function toggleTextContent(container) {
+        const isExpanded = container.dataset.expanded === 'true';
+        const fullText = container.dataset.full || '';
+        const collapsedText = container.dataset.collapsed || fullText;
+        const body = container.querySelector('.text-content-body');
+        const toggleButton = container.querySelector('button[data-text-action="toggle"]');
+
+        if (body) {
+            body.textContent = isExpanded ? collapsedText : fullText;
+        }
+        if (toggleButton) {
+            toggleButton.textContent = isExpanded ? 'Show more' : 'Show less';
+        }
+        container.dataset.expanded = isExpanded ? 'false' : 'true';
+    }
+
+    function requestCopy(fullText, button) {
+        const copyId = `copy-${nextCopyRequestId++}`;
+        button.dataset.copyId = copyId;
+        button.disabled = true;
+        button.textContent = 'Copying...';
+        vscode.postMessage({
+            command: 'copyToClipboard',
+            text: fullText,
+            copyId
+        });
+    }
+
+    function markCopied(copyId) {
+        const selector = `button[data-copy-id="${copyId}"]`;
+        const button = document.querySelector(selector);
+        if (!(button instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        button.disabled = false;
+        button.textContent = 'Copied';
+        setTimeout(() => {
+            button.textContent = 'Copy';
+            button.removeAttribute('data-copy-id');
+        }, 1200);
+    }
+
+    function markCopyFailed(copyId, message) {
+        const selector = `button[data-copy-id="${copyId}"]`;
+        const button = document.querySelector(selector);
+        if (button instanceof HTMLButtonElement) {
+            button.disabled = false;
+            button.textContent = 'Copy';
+            button.removeAttribute('data-copy-id');
+        }
+        if (message) {
+            showError(message);
+        }
+    }
+
+    function formatArrayForPreview(value) {
+        return `[${value.map(item => String(item)).join(', ')}]`;
+    }
+
+    function createTableForObject(value, options) {
         const table = document.createElement('table');
         table.className = 'metadata-table';
         const objectValue = value && typeof value === 'object' ? value : {};
 
         Object.entries(objectValue).forEach(([key, raw]) => {
             const row = document.createElement('tr');
+
             const keyCell = document.createElement('td');
             keyCell.className = 'metadata-key';
             keyCell.textContent = key;
@@ -359,15 +427,16 @@
 
             const valueCell = document.createElement('td');
             valueCell.className = 'metadata-value';
-            valueCell.appendChild(renderValueNode(key, raw));
+            valueCell.appendChild(renderValueNode(key, raw, options));
             row.appendChild(valueCell);
 
             table.appendChild(row);
         });
+
         return table;
     }
 
-    function renderValueNode(key, value) {
+    function renderValueNode(key, value, options) {
         if (value === null || value === undefined) {
             const span = document.createElement('span');
             span.className = 'empty-result';
@@ -375,8 +444,18 @@
             return span;
         }
 
+        const normalizedKey = String(key || '').toLowerCase();
+        const previewKeys = options && options.previewKeys instanceof Set
+            ? options.previewKeys
+            : new Set();
+        const forcePreview = previewKeys.has(normalizedKey);
+
         if (typeof value === 'string') {
-            const looksLikeLongText = key === 'text' || key === 'content' || key === 'chunk_text' || value.length > 180;
+            const looksLikeLongText = forcePreview
+                || normalizedKey === 'text'
+                || normalizedKey === 'content'
+                || normalizedKey === 'chunk_text'
+                || value.length > 180;
             if (looksLikeLongText) {
                 return renderTextContent(value);
             }
@@ -398,6 +477,9 @@
                 span.textContent = '[]';
                 return span;
             }
+            if (forcePreview || normalizedKey === 'values') {
+                return renderTextContent(formatArrayForPreview(value));
+            }
             const allPrimitive = value.every(item => item === null || ['string', 'number', 'boolean'].includes(typeof item));
             if (allPrimitive) {
                 const span = document.createElement('span');
@@ -406,13 +488,13 @@
             }
             const container = document.createElement('div');
             value.forEach((item, index) => {
-                container.appendChild(renderMatchItem(item, index));
+                container.appendChild(renderMatchItem(item, index, options));
             });
             return container;
         }
 
         if (typeof value === 'object') {
-            return createTableForObject(value);
+            return createTableForObject(value, options);
         }
 
         const fallback = document.createElement('span');
@@ -420,12 +502,13 @@
         return fallback;
     }
 
-    function renderMatchItem(item, index) {
+    function renderMatchItem(item, index, options) {
         const el = document.createElement('div');
         el.className = 'match-item';
 
         const header = document.createElement('div');
         header.className = 'match-header';
+
         const left = document.createElement('span');
         left.textContent = item && item.id ? `ID: ${item.id}` : `Item ${index + 1}`;
         header.appendChild(left);
@@ -442,7 +525,7 @@
             delete details.id;
             delete details.score;
             if (Object.keys(details).length > 0) {
-                el.appendChild(createTableForObject(details));
+                el.appendChild(createTableForObject(details, options));
             }
         } else {
             const text = document.createElement('div');
@@ -452,6 +535,33 @@
 
         return el;
     }
+
+    document.addEventListener('click', event => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const actionButton = target.closest('button[data-text-action]');
+        if (!(actionButton instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const container = actionButton.closest('.text-content[data-full]');
+        if (!(container instanceof HTMLElement)) {
+            return;
+        }
+
+        const action = actionButton.getAttribute('data-text-action');
+        if (action === 'toggle') {
+            toggleTextContent(container);
+            return;
+        }
+
+        if (action === 'copy') {
+            requestCopy(container.dataset.full || '', actionButton);
+        }
+    });
 
     document.querySelectorAll('button[data-action]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -472,12 +582,20 @@
         });
     });
 
+    if (addEmbedDocumentBtn) {
+        addEmbedDocumentBtn.addEventListener('click', () => addDocument(embedDocumentsList, ''));
+    }
+
     if (addRerankDocumentBtn) {
-        addRerankDocumentBtn.addEventListener('click', () => addRerankDocument(''));
+        addRerankDocumentBtn.addEventListener('click', () => addDocument(rerankDocumentsList, ''));
+    }
+
+    if (clearEmbedDocumentsBtn) {
+        clearEmbedDocumentsBtn.addEventListener('click', () => clearDocuments(embedDocumentsList));
     }
 
     if (clearRerankDocumentsBtn) {
-        clearRerankDocumentsBtn.addEventListener('click', () => clearRerankDocuments());
+        clearRerankDocumentsBtn.addEventListener('click', () => clearDocuments(rerankDocumentsList));
     }
 
     if (clearEmbedResultsBtn) {
@@ -503,6 +621,12 @@
                     renderRerankResults(message.result || {}, message.meta || {});
                 }
                 break;
+            case 'copied':
+                markCopied(message.copyId);
+                break;
+            case 'copyError':
+                markCopyFailed(message.copyId, message.message);
+                break;
             case 'error':
                 showError(message.message);
                 break;
@@ -519,5 +643,6 @@
         });
     }
     setEmbedInputTypeOptionsForModel(embedModelSelect ? embedModelSelect.value : '');
-    clearRerankDocuments();
+    clearDocuments(embedDocumentsList);
+    clearDocuments(rerankDocumentsList);
 })();
