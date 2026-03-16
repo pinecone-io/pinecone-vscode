@@ -254,7 +254,7 @@ export class IndexCommands {
                         // Still initializing
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
-                    } catch (pollError) {
+                    } catch (_pollError) {
                         // Index might not be immediately visible, continue polling
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
@@ -415,7 +415,7 @@ export class IndexCommands {
                         // Still initializing
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
-                    } catch (pollError) {
+                    } catch (_pollError) {
                         // Index might not be immediately visible, continue polling
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
@@ -1109,7 +1109,7 @@ export class IndexCommands {
                         // Still initializing
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });
-                    } catch (e: unknown) {
+                    } catch (_e: unknown) {
                         // Index might not exist yet in early stages, continue polling
                         const elapsed = Math.round((Date.now() - startTime) / 1000);
                         progress.report({ message: `Waiting for index... (${elapsed}s)` });

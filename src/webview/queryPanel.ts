@@ -410,7 +410,7 @@ export class QueryPanel {
                 if (!Array.isArray(vector) || !vector.every(n => typeof n === 'number')) {
                     throw new Error('Vector must be an array of numbers');
                 }
-            } catch (e) {
+            } catch (_e) {
                 this._panel.webview.postMessage({ 
                     command: 'error', 
                     message: 'Invalid vector format. Must be a JSON array of numbers (e.g., [0.1, 0.2, 0.3]).' 
